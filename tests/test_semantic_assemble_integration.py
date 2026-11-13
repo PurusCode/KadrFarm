@@ -4,9 +4,9 @@ import json
 import pytest
 from pathlib import Path
 from types import SimpleNamespace
-from video_farm.assemble_v2 import assemble_v2
-from video_farm.qc_scene_sync import run_scene_qc
-from video_farm.diagram_renderer import render_scene_visual
+from kadr_farm.assemble_v2 import assemble_v2
+from kadr_farm.qc_scene_sync import run_scene_qc
+from kadr_farm.diagram_renderer import render_scene_visual
 
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg is required")
 def test_one_scene_audio_visual_assembles_and_passes_qc(tmp_path):

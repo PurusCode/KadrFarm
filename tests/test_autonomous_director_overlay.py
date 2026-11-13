@@ -1,7 +1,7 @@
 import pytest
-from video_farm.production_director import _check_exact_coverage, _norm
-from video_farm.director_models import DirectorBeat, DirectorScenePlan
-from video_farm.director_sources import _safe_public_url
+from kadr_farm.production_director import _check_exact_coverage, _norm
+from kadr_farm.director_models import DirectorBeat, DirectorScenePlan
+from kadr_farm.director_sources import _safe_public_url
 
 def test_exact_spoken_text_coverage_accepts_whitespace_only_changes():
     scene={"id":"s_001","voice_text":"Привет,   мир!"}
@@ -32,7 +32,7 @@ def test_public_https_url_passes_syntax_gate():
 
 def test_rendered_templates_produce_full_hd_png(tmp_path):
     from PIL import Image
-    from video_farm.director_visuals import render_beat_visual
+    from kadr_farm.director_visuals import render_beat_visual
 
     path = render_beat_visual(
         {"id": "s_001", "meaning": "Объяснение токенизации"},
@@ -46,7 +46,7 @@ def test_rendered_templates_produce_full_hd_png(tmp_path):
 
 
 def test_music_pad_preserves_exact_sample_count_after_float_roundtrip():
-    from video_farm.director_audio import _music_pad, SAMPLE_RATE
+    from kadr_farm.director_audio import _music_pad, SAMPLE_RATE
 
     # This sample count is a known float edge case: int(215279 / 24000 *
     # 24000) evaluates to 215278 on CPython due to binary rounding.
@@ -57,7 +57,7 @@ def test_music_pad_preserves_exact_sample_count_after_float_roundtrip():
 
 def test_audio_master_clamps_rounded_final_endpoint_to_narration_length(tmp_path):
     import wave
-    from video_farm.director_audio import build_master_audio, SAMPLE_RATE
+    from kadr_farm.director_audio import build_master_audio, SAMPLE_RATE
 
     source = tmp_path / "fractional.wav"
     sample_count = 215279
@@ -78,7 +78,7 @@ def test_audio_master_clamps_rounded_final_endpoint_to_narration_length(tmp_path
 
 def test_audio_master_uses_measured_wav_lengths_and_interbeat_gap(tmp_path):
     import wave
-    from video_farm.director_audio import build_master_audio, SAMPLE_RATE
+    from kadr_farm.director_audio import build_master_audio, SAMPLE_RATE
 
     paths = []
     for name, frames in (("one.wav", 4800), ("two.wav", 7200)):
@@ -102,7 +102,7 @@ def test_media_production_synthesizes_each_exact_phrase_and_renders_fallback(tmp
     import wave
     from pathlib import Path
     from types import SimpleNamespace
-    from video_farm import production_director as director
+    from kadr_farm import production_director as director
 
     def fake_normalize(text):
         return text
@@ -144,7 +144,7 @@ def test_media_production_synthesizes_each_exact_phrase_and_renders_fallback(tmp
 
 def test_source_audit_never_marks_claim_verified(monkeypatch, tmp_path):
     from types import SimpleNamespace
-    from video_farm import director_sources
+    from kadr_farm import director_sources
 
     monkeypatch.setattr(director_sources, "fetch_source_excerpt",
                         lambda _url: {"url": _url, "status": "http_200", "text": "Evidence text"})
@@ -154,7 +154,7 @@ def test_source_audit_never_marks_claim_verified(monkeypatch, tmp_path):
             pass
         def complete(self, _schema, _system, prompt, **_kwargs):
             import json
-            from video_farm.director_models import SourceEvidenceBatch, SourceEvidence
+            from kadr_farm.director_models import SourceEvidenceBatch, SourceEvidence
             # Read source IDs from the exact payload line after the system prompt.
             data = json.loads(prompt.split("\n", 1)[1])
             return SourceEvidenceBatch(assessments=[SourceEvidence(
@@ -174,7 +174,7 @@ def test_source_audit_never_marks_claim_verified(monkeypatch, tmp_path):
 
 def test_critic_can_use_a_separate_configured_provider(monkeypatch):
     from types import SimpleNamespace
-    from video_farm.production_director import _critic_settings
+    from kadr_farm.production_director import _critic_settings
 
     primary = SimpleNamespace(name="primary", model="mws-gemma")
     secondary = SimpleNamespace(name="secondary", model="qwen-local")
@@ -189,7 +189,7 @@ def test_critic_can_use_a_separate_configured_provider(monkeypatch):
 def test_pixabay_photo_is_decoded_and_resolution_checked(tmp_path):
     from types import SimpleNamespace
     from PIL import Image
-    from video_farm.production_director import _validate_pixabay_asset
+    from kadr_farm.production_director import _validate_pixabay_asset
 
     good = tmp_path / "good.jpg"
     Image.new("RGB", (800, 450), (20, 60, 90)).save(good)
@@ -206,7 +206,7 @@ def test_pixabay_photo_is_decoded_and_resolution_checked(tmp_path):
 
 def test_render_never_exposes_visual_description_as_visible_copy(tmp_path):
     import json
-    from video_farm.director_visuals import render_beat_visual
+    from kadr_farm.director_visuals import render_beat_visual
 
     description = "Статичный макет чата с ИИ. Блок текста появляется мгновенно."
     image = render_beat_visual(
@@ -225,7 +225,7 @@ def test_render_never_exposes_visual_description_as_visible_copy(tmp_path):
 
 
 def test_instruction_like_display_labels_are_filtered():
-    from video_farm.director_visuals import _safe_labels
+    from kadr_farm.director_visuals import _safe_labels
 
     labels = _safe_labels({"on_screen_text": [
         "Центральный белый текст на темном фоне",
@@ -236,7 +236,7 @@ def test_instruction_like_display_labels_are_filtered():
 
 
 def test_visual_motif_does_not_confuse_context_with_tokenization():
-    from video_farm.director_visuals import _motif
+    from kadr_farm.director_visuals import _motif
 
     motif = _motif(
         {"meaning": "Проверка достоверности источника"},
@@ -249,7 +249,7 @@ def test_visual_motif_does_not_confuse_context_with_tokenization():
 def test_visual_audit_detects_duplicate_images_and_records_templates(tmp_path):
     import json
     from PIL import Image
-    from video_farm.director_visuals import render_beat_visual, audit_visual_assets
+    from kadr_farm.director_visuals import render_beat_visual, audit_visual_assets
 
     path1 = render_beat_visual(
         {"id": "s_001", "meaning": "Проверка источника"},
@@ -283,7 +283,7 @@ def test_local_renderer_strategy_rejects_stock_visual_types():
 
 
 def test_unverified_percent_labels_are_not_rendered():
-    from video_farm.director_visuals import _safe_labels
+    from kadr_farm.director_visuals import _safe_labels
 
     assert _safe_labels({"on_screen_text": ["Париж 99%", "ПРОВЕРИТЬ ИСТОЧНИК"]}) == ["ПРОВЕРИТЬ ИСТОЧНИК"]
 
@@ -293,7 +293,7 @@ def test_final_video_audit_extracts_real_encoded_frames_and_contact_sheet(tmp_pa
     import shutil
     import subprocess
     import pytest
-    from video_farm.director_visuals import render_beat_visual, audit_final_video_frames
+    from kadr_farm.director_visuals import render_beat_visual, audit_final_video_frames
 
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:

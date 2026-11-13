@@ -95,16 +95,16 @@ def run_checked(args: list[str], root: Path, env: dict[str, str], label: str) ->
 
 
 def install(root: Path) -> None:
-    cli = root / "src" / "video_farm" / "cli.py"
-    discovery = root / "src" / "video_farm" / "discovery.py"
+    cli = root / "src" / "kadr_farm" / "cli.py"
+    discovery = root / "src" / "kadr_farm" / "discovery.py"
     payload = root / "stage3"
     required = [
-        payload / "src" / "video_farm" / "discovery_analysis.py",
+        payload / "src" / "kadr_farm" / "discovery_analysis.py",
         payload / "tests" / "test_discovery_analysis.py",
         payload / "docs" / "TREND_DISCOVERY_STAGE3.md",
     ]
     if not cli.is_file() or not discovery.is_file():
-        fail("Project root not recognized. Expected src/video_farm/cli.py and discovery.py.")
+        fail("Project root not recognized. Expected src/kadr_farm/cli.py and discovery.py.")
     missing = [str(path.relative_to(root)) for path in required if not path.is_file()]
     if missing:
         fail("Archive is incomplete; missing: " + ", ".join(missing))
@@ -121,7 +121,7 @@ def install(root: Path) -> None:
     targets = [
         (cli, new_cli.encode("utf-8")),
         (discovery, new_discovery.encode("utf-8")),
-        (root / "src" / "video_farm" / "discovery_analysis.py", required[0].read_bytes()),
+        (root / "src" / "kadr_farm" / "discovery_analysis.py", required[0].read_bytes()),
         (root / "tests" / "test_discovery_analysis.py", required[1].read_bytes()),
         (root / "docs" / "TREND_DISCOVERY_STAGE3.md", required[2].read_bytes()),
     ]
@@ -141,9 +141,9 @@ def install(root: Path) -> None:
         env = os.environ.copy()
         src_path = str(root / "src")
         env["PYTHONPATH"] = src_path + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-        run_checked(["-m", "py_compile", str(root / "src" / "video_farm" / "discovery_analysis.py"), str(cli), str(discovery)], root, env, "Python syntax check")
+        run_checked(["-m", "py_compile", str(root / "src" / "kadr_farm" / "discovery_analysis.py"), str(cli), str(discovery)], root, env, "Python syntax check")
         run_checked(["-m", "pytest", "tests/test_discovery_analysis.py", "-q"], root, env, "Stage 3 tests")
-        run_checked(["-m", "video_farm.cli", "discover-analyze", "--help"], root, env, "CLI command check")
+        run_checked(["-m", "kadr_farm.cli", "discover-analyze", "--help"], root, env, "CLI command check")
     except Exception:
         print("Installation failed; restoring original files...", flush=True)
         for target, backup in reversed(changes):
@@ -158,7 +158,7 @@ def install(root: Path) -> None:
     print("\nStage 3 installed successfully.")
     print("The original discovery.json was not modified. No YouTube API calls were made.")
     print(f"Backups: {backup_root}")
-    print(r"Run: .\.venv\Scripts\python.exe -m video_farm.cli discover-analyze")
+    print(r"Run: .\.venv\Scripts\python.exe -m kadr_farm.cli discover-analyze")
 
 
 def main() -> int:

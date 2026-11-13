@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from video_farm.models import Scene
+from kadr_farm.models import Scene
 
 def base_scene():
     return dict(id="s_001", block_id="b1", voice_text="This is a sufficiently long spoken narration.",

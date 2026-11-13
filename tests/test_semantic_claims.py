@@ -1,4 +1,4 @@
-from video_farm.scene_validator import enrich_claims
+from kadr_farm.scene_validator import enrich_claims
 
 def test_claims_are_never_auto_verified():
     claims = enrich_claims([

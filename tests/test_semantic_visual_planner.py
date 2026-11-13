@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
-from video_farm import visual_planner
-from video_farm.models import VisualPlanBatch
+from kadr_farm import visual_planner
+from kadr_farm.models import VisualPlanBatch
 
 class FakeLLM:
     def __init__(self, *_args, **_kwargs): pass
@@ -128,7 +128,7 @@ def test_visual_beats_normalize_equal_weights_from_llm():
 
 
 def test_scene_normalizes_visual_beat_weights_from_checkpoint_or_file():
-    from video_farm.models import Scene
+    from kadr_farm.models import Scene
 
     scene_data = {
         "id": "s_042",

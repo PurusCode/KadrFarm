@@ -1,4 +1,4 @@
-from video_farm import config
+from kadr_farm import config
 
 
 def test_provider_timeouts_have_fast_primary_and_long_local_fallback(tmp_path, monkeypatch):
@@ -37,8 +37,8 @@ def test_provider_timeout_can_be_overridden_and_is_range_checked(tmp_path, monke
 def test_provider_specific_timeouts_are_scoped_to_structured_router(monkeypatch):
     import sys
     from types import SimpleNamespace
-    from video_farm.llm import LLMRouter
-    from video_farm.config import ProviderConfig
+    from kadr_farm.llm import LLMRouter
+    from kadr_farm.config import ProviderConfig
 
     captured = []
 

@@ -1,7 +1,7 @@
-from video_farm.common import parse_json_response, word_count, slugify
-from video_farm.youtube import iso_duration_seconds
-from video_farm.tts import normalize_for_speech
-from video_farm import text_normalization as normalizer
+from kadr_farm.common import parse_json_response, word_count, slugify
+from kadr_farm.youtube import iso_duration_seconds
+from kadr_farm.tts import normalize_for_speech
+from kadr_farm import text_normalization as normalizer
 
 
 def _fake_num2words(value, lang="ru", to="cardinal", case=None, gender=None):

@@ -27,12 +27,12 @@ from huggingface_hub import snapshot_download
 _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
-from video_farm.kokoro_stress import (  # noqa: E402
+from kadr_farm.kokoro_stress import (  # noqa: E402
     build_configured_g2p,
     load_stress_config,
     stress_config_sha256,
 )
-from video_farm.text_normalization import (  # noqa: E402
+from kadr_farm.text_normalization import (  # noqa: E402
     NORMALIZER_VERSION,
     find_numeric_tokens,
     normalizer_backend,

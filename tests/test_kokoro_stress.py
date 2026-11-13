@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from video_farm.kokoro_stress import (
+from kadr_farm.kokoro_stress import (
     apply_contextual_stress,
     load_stress_config,
     stress_config_sha256,

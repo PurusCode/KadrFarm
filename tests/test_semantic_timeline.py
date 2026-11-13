@@ -1,4 +1,4 @@
-from video_farm.scene_validator import validate_timing
+from kadr_farm.scene_validator import validate_timing
 
 def test_timing_warnings_are_not_hard_limits():
     assert validate_timing({"id":"s_001","duration_sec":2.5})

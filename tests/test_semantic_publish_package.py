@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from video_farm.publish_package import create_publish_package
+from kadr_farm.publish_package import create_publish_package
 
 def test_publish_package_lists_real_media_and_unverified_claims(tmp_path):
     script=tmp_path/'script.json'; storyboard=tmp_path/'storyboard.json'

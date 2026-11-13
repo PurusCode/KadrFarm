@@ -14,14 +14,14 @@ def load_diagnostic(monkeypatch):
     src = PROJECT_ROOT / "src"
     sys.path.insert(0, str(src)) if str(src) not in sys.path else None
 
-    common = types.ModuleType("video_farm.common")
+    common = types.ModuleType("kadr_farm.common")
     common.parse_json_response = lambda value: __import__("json").loads(value)
     common.read_json = lambda path: {}
-    config = types.ModuleType("video_farm.config")
+    config = types.ModuleType("kadr_farm.config")
     config.load_settings = lambda: None
-    llm = types.ModuleType("video_farm.llm_structured")
+    llm = types.ModuleType("kadr_farm.llm_structured")
     llm._schema_for_provider = lambda model: {"type": "object"}
-    models = types.ModuleType("video_farm.models")
+    models = types.ModuleType("kadr_farm.models")
 
     class DummyVisualPlanBatch:
         @classmethod
@@ -29,18 +29,18 @@ def load_diagnostic(monkeypatch):
             return value
 
     models.VisualPlanBatch = DummyVisualPlanBatch
-    planner = types.ModuleType("video_farm.visual_planner")
+    planner = types.ModuleType("kadr_farm.visual_planner")
     planner.SYSTEM_PROMPT = "Test system prompt"
 
-    package = types.ModuleType("video_farm")
+    package = types.ModuleType("kadr_farm")
     package.__path__ = []
     for name, module in {
-        "video_farm": package,
-        "video_farm.common": common,
-        "video_farm.config": config,
-        "video_farm.llm_structured": llm,
-        "video_farm.models": models,
-        "video_farm.visual_planner": planner,
+        "kadr_farm": package,
+        "kadr_farm.common": common,
+        "kadr_farm.config": config,
+        "kadr_farm.llm_structured": llm,
+        "kadr_farm.models": models,
+        "kadr_farm.visual_planner": planner,
     }.items():
         monkeypatch.setitem(sys.modules, name, module)
 

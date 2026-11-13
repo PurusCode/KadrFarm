@@ -50,7 +50,7 @@ def main() -> int:
 
     # Call the same validation function that assemble_video uses before creating a timeline.
     try:
-        from video_farm.assemble import _validate_audio_manifest
+        from kadr_farm.assemble import _validate_audio_manifest
         rows_by_id = _validate_audio_manifest(script.get("blocks", []), manifest, audio_dir)
     except Exception as exc:
         print(f"ERROR: assemble.py rejected the Kokoro manifest: {type(exc).__name__}: {exc}", file=sys.stderr)

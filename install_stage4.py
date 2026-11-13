@@ -43,18 +43,18 @@ def run(args: list[str]) -> None:
 
 def main() -> int:
     print("[Stage 4] Проверка структуры проекта...", flush=True)
-    if not (ROOT / "pyproject.toml").is_file() or not (ROOT / "src/video_farm/cli.py").is_file():
+    if not (ROOT / "pyproject.toml").is_file() or not (ROOT / "src/kadr_farm/cli.py").is_file():
         raise RuntimeError("Распакуйте архив в корень video-farm (рядом с pyproject.toml).")
     if not (ROOT / ".venv/Scripts/python.exe").is_file():
         raise RuntimeError("Не найден .venv/Scripts/python.exe.")
 
-    cli_path = ROOT / "src/video_farm/cli.py"
-    discovery_path = ROOT / "src/video_farm/discovery.py"
-    module_dest = ROOT / "src/video_farm/discovery_editor.py"
+    cli_path = ROOT / "src/kadr_farm/cli.py"
+    discovery_path = ROOT / "src/kadr_farm/discovery.py"
+    module_dest = ROOT / "src/kadr_farm/discovery_editor.py"
     test_dest = ROOT / "tests/test_discovery_editor.py"
     doc_dest = ROOT / "docs/TREND_DISCOVERY_STAGE4.md"
     payload_files = [
-        (PAYLOAD / "src/video_farm/discovery_editor.py", module_dest),
+        (PAYLOAD / "src/kadr_farm/discovery_editor.py", module_dest),
         (PAYLOAD / "tests/test_discovery_editor.py", test_dest),
         (PAYLOAD / "docs/TREND_DISCOVERY_STAGE4.md", doc_dest),
     ]
@@ -112,14 +112,14 @@ def main() -> int:
             created.append(dest)
 
         print("[Stage 4] Проверка синтаксиса Python...", flush=True)
-        run([str(PYTHON), "-m", "py_compile", "src/video_farm/discovery_editor.py", "src/video_farm/cli.py", "src/video_farm/discovery.py"])
+        run([str(PYTHON), "-m", "py_compile", "src/kadr_farm/discovery_editor.py", "src/kadr_farm/cli.py", "src/kadr_farm/discovery.py"])
         print("[Stage 4] Тесты Stage 4 и Stage 3...", flush=True)
         run([str(PYTHON), "-m", "pytest", "-q", "tests/test_discovery_editor.py", "tests/test_discovery_analysis.py"])
         print("[Stage 4] Проверка CLI...", flush=True)
-        run([str(PYTHON), "-m", "video_farm.cli", "discover-editor", "--help"])
+        run([str(PYTHON), "-m", "kadr_farm.cli", "discover-editor", "--help"])
         print("[Stage 4] Установка завершена успешно.", flush=True)
         print(f"Резервная копия: {backup_dir}", flush=True)
-        print("Запуск: .\\.venv\\Scripts\\python.exe -m video_farm.cli discover-editor", flush=True)
+        print("Запуск: .\\.venv\\Scripts\\python.exe -m kadr_farm.cli discover-editor", flush=True)
         return 0
     except Exception:
         print("[Stage 4] Ошибка. Выполняется откат...", file=sys.stderr, flush=True)

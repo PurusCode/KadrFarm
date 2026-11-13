@@ -1,5 +1,5 @@
 import pytest
-from video_farm.storyboard import validate_block_coverage, validate_storyboard_coverage
+from kadr_farm.storyboard import validate_block_coverage, validate_storyboard_coverage
 
 def test_valid_complete_coverage():
     validate_block_coverage("Первая мысль. Вторая мысль.", ["Первая мысль.", "Вторая мысль."], "b1")

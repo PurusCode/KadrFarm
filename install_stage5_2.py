@@ -22,8 +22,8 @@ def main() -> int:
     args = parser.parse_args()
     root = Path(args.project_root).resolve()
     package = Path(args.package_root).resolve()
-    if not (root / "pyproject.toml").is_file() or not (root / "src" / "video_farm" / "discovery_editor.py").is_file():
-        raise RuntimeError("Ожидался проект с установленным Stage 4: src/video_farm/discovery_editor.py")
+    if not (root / "pyproject.toml").is_file() or not (root / "src" / "kadr_farm" / "discovery_editor.py").is_file():
+        raise RuntimeError("Ожидался проект с установленным Stage 4: src/kadr_farm/discovery_editor.py")
     profile_path = root / "config" / "production_profiles.json"
     if not profile_path.is_file():
         raise RuntimeError("Не найден config/production_profiles.json. Сначала установите Stage 5.1 v1.0.1.")
@@ -36,7 +36,7 @@ def main() -> int:
 
     stage = package / "stage5_2"
     source_map = {
-        "src/video_farm/discovery_editor.py": stage / "src/video_farm/discovery_editor.py",
+        "src/kadr_farm/discovery_editor.py": stage / "src/kadr_farm/discovery_editor.py",
         "tests/test_discovery_editor.py": stage / "tests/test_discovery_editor.py",
         "docs/TREND_DISCOVERY_STAGE5_2.md": stage / "docs/TREND_DISCOVERY_STAGE5_2.md",
     }
@@ -69,12 +69,12 @@ def main() -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
             changed.append(rel)
-        run([str(python), "-m", "py_compile", "src/video_farm/discovery_editor.py"], root, "Проверка синтаксиса")
+        run([str(python), "-m", "py_compile", "src/kadr_farm/discovery_editor.py"], root, "Проверка синтаксиса")
         run([str(python), "-m", "pytest", "-q", "tests/test_discovery_editor.py", "tests/test_discovery.py", "tests/test_discovery_quota.py", "tests/test_discovery_analysis.py"], root, "Регрессионные тесты Stage 3–5.2")
-        run([str(python), "-m", "video_farm.cli", "discover-editor", "--help"], root, "Проверка CLI")
+        run([str(python), "-m", "kadr_farm.cli", "discover-editor", "--help"], root, "Проверка CLI")
         print("[Stage 5.2] Установка завершена успешно.")
         print(f"Резервная копия: {backup_root}")
-        print(r"Запуск: .\.venv\Scripts\python.exe -m video_farm.cli discover-editor")
+        print(r"Запуск: .\.venv\Scripts\python.exe -m kadr_farm.cli discover-editor")
         return 0
     except Exception:
         print("[Stage 5.2] Ошибка; выполняется откат...", file=sys.stderr, flush=True)

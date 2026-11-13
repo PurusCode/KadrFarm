@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from video_farm.common import read_json, word_count
-from video_farm.content import FALLBACK_TOPICS, fit_title, validate_script
+from kadr_farm.common import read_json, word_count
+from kadr_farm.content import FALLBACK_TOPICS, fit_title, validate_script
 
 ROOT = Path(__file__).resolve().parents[1]
 

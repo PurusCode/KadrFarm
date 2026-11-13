@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from video_farm.discovery_editor import build_review_page
+from kadr_farm.discovery_editor import build_review_page
 
 
 def _report(videos=None, *, deadline="2026-12-02T10:00:00Z"):
@@ -93,7 +93,7 @@ def test_deduplicates_video_ids(tmp_path):
 
 def test_cleanup_also_removes_stage4_outputs_after_source_deadline(tmp_path):
     import datetime as dt
-    from video_farm.discovery import purge_expired_discovery_output
+    from kadr_farm.discovery import purge_expired_discovery_output
 
     source = tmp_path / "discovery.json"
     source.write_text(json.dumps({"refresh_or_delete_by_utc": "2026-11-01T00:00:00Z"}), encoding="utf-8")

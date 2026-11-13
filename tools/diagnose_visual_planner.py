@@ -30,14 +30,14 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from video_farm.common import parse_json_response, read_json, write_json  # noqa: E402
-from video_farm.config import load_settings  # noqa: E402
-from video_farm.llm_structured import (  # noqa: E402
+from kadr_farm.common import parse_json_response, read_json, write_json  # noqa: E402
+from kadr_farm.config import load_settings  # noqa: E402
+from kadr_farm.llm_structured import (  # noqa: E402
     _is_format_unsupported,
     _schema_for_provider,
 )
-from video_farm.models import VisualPlanBatch  # noqa: E402
-from video_farm.visual_planner import SYSTEM_PROMPT as VISUAL_SYSTEM_PROMPT  # noqa: E402
+from kadr_farm.models import VisualPlanBatch  # noqa: E402
+from kadr_farm.visual_planner import SYSTEM_PROMPT as VISUAL_SYSTEM_PROMPT  # noqa: E402
 
 log = logging.getLogger("mws_visual_diagnostic")
 

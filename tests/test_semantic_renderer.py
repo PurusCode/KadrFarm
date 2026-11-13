@@ -1,6 +1,6 @@
 from pathlib import Path
 from PIL import Image
-from video_farm.diagram_renderer import render_scene_visual
+from kadr_farm.diagram_renderer import render_scene_visual
 
 def test_chart_renderer_uses_only_supplied_values_and_supports_negative_values(tmp_path):
     path=render_scene_visual({

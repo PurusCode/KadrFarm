@@ -395,7 +395,7 @@ def main() -> None:
     except KeyboardInterrupt:
         print("Остановлено пользователем.", file=sys.stderr); code = 130
     except Exception as exc:
-        logging.getLogger("video_farm").exception("Ошибка выполнения")
+        logging.getLogger("kadr_farm").exception("Ошибка выполнения")
         print(f"ОШИБКА: {exc}", file=sys.stderr); code = 1
     raise SystemExit(code)
 

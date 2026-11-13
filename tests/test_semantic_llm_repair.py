@@ -1,6 +1,6 @@
 from types import SimpleNamespace
-from video_farm.llm_structured import StructuredLLMRouter
-from video_farm.models import StoryboardResponse
+from kadr_farm.llm_structured import StructuredLLMRouter
+from kadr_farm.models import StoryboardResponse
 
 class FakeCompletions:
     def __init__(self, contents):
@@ -40,7 +40,7 @@ def test_invalid_response_is_not_retried_forever():
 
 def test_pydantic_validator_valueerror_is_serialized_and_repaired():
     import json
-    from video_farm.models import Claim
+    from kadr_farm.models import Claim
 
     invalid = {
         "text": "Это проверяемое фактическое утверждение.",

@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $python = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 $installer = Join-Path $PSScriptRoot 'install_stage4.py'
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {

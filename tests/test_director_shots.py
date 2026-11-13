@@ -1,6 +1,6 @@
 import pytest
 
-from video_farm.director_shots import _check_group_coverage
+from kadr_farm.director_shots import _check_group_coverage
 
 
 def shot(shot_id, source_beat_id, spoken_text):

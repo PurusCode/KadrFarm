@@ -7,9 +7,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from video_farm import kokoro_engine, tts
-from video_farm.assemble import _validate_audio_manifest
-from video_farm.common import write_json
+from kadr_farm import kokoro_engine, tts
+from kadr_farm.assemble import _validate_audio_manifest
+from kadr_farm.common import write_json
 
 
 class FakeG2P:
@@ -42,7 +42,7 @@ def _fake_runtime(tmp_path: Path):
         (stress, b'{"schema_version":1,"ruaccent":{},"context_rules":[]}'),
     ):
         path.write_bytes(payload)
-    from video_farm.kokoro_stress import load_stress_config
+    from kadr_farm.kokoro_stress import load_stress_config
     return kokoro_engine.KokoroRuntime(
         session=FakeSession(),
         g2p=FakeG2P(),
@@ -213,7 +213,7 @@ def test_control_script_covers_required_speech_cases():
 
 
 def test_description_does_not_claim_stock_sources_when_no_external_media_used(tmp_path):
-    from video_farm.assemble import create_description
+    from kadr_farm.assemble import create_description
     script_path = tmp_path / "script.json"
     write_json(script_path, {"title": "Тестовый ролик", "blocks": [{"id": "intro", "heading": "Вступление", "kind": "body"}]})
     payload = create_description(script_path, tmp_path / "publish.txt", used_media=[])
@@ -224,7 +224,7 @@ def test_description_does_not_claim_stock_sources_when_no_external_media_used(tm
 
 
 def test_description_lists_only_media_reported_as_actually_used(tmp_path):
-    from video_farm.assemble import create_description
+    from kadr_farm.assemble import create_description
     script_path = tmp_path / "script.json"
     write_json(script_path, {"title": "Тестовый ролик", "blocks": []})
     used = [{
@@ -240,7 +240,7 @@ def test_description_lists_only_media_reported_as_actually_used(tmp_path):
 
 
 def test_description_created_without_render_evidence_marks_media_unknown(tmp_path):
-    from video_farm.assemble import create_description
+    from kadr_farm.assemble import create_description
     script_path = tmp_path / "script.json"
     write_json(script_path, {"title": "Черновик описания", "blocks": []})
     payload = create_description(script_path, tmp_path / "publish.txt")

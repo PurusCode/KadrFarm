@@ -17,33 +17,33 @@ else:
     # The diagnostic helpers can also be tested in isolation outside the repo.
     import types
 
-    package = types.ModuleType("video_farm")
+    package = types.ModuleType("kadr_farm")
     package.__path__ = []
-    sys.modules.setdefault("video_farm", package)
+    sys.modules.setdefault("kadr_farm", package)
 
-    common = types.ModuleType("video_farm.common")
+    common = types.ModuleType("kadr_farm.common")
     common.parse_json_response = json.loads
     common.read_json = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
     common.write_json = lambda path, data: Path(path).write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    sys.modules["video_farm.common"] = common
+    sys.modules["kadr_farm.common"] = common
 
-    config = types.ModuleType("video_farm.config")
+    config = types.ModuleType("kadr_farm.config")
     config.load_settings = lambda: None
-    sys.modules["video_farm.config"] = config
+    sys.modules["kadr_farm.config"] = config
 
-    llm_structured = types.ModuleType("video_farm.llm_structured")
+    llm_structured = types.ModuleType("kadr_farm.llm_structured")
     llm_structured._schema_for_provider = lambda model: {"type": "object"}
-    sys.modules["video_farm.llm_structured"] = llm_structured
+    sys.modules["kadr_farm.llm_structured"] = llm_structured
 
-    models = types.ModuleType("video_farm.models")
+    models = types.ModuleType("kadr_farm.models")
     models.VisualPlanBatch = type("VisualPlanBatch", (), {})
-    sys.modules["video_farm.models"] = models
+    sys.modules["kadr_farm.models"] = models
 
-    visual_planner = types.ModuleType("video_farm.visual_planner")
+    visual_planner = types.ModuleType("kadr_farm.visual_planner")
     visual_planner.SYSTEM_PROMPT = "test visual planner system prompt"
-    sys.modules["video_farm.visual_planner"] = visual_planner
+    sys.modules["kadr_farm.visual_planner"] = visual_planner
 
 SCRIPT = ROOT / "tools" / "diagnose_ollama_native.py"
 spec = importlib.util.spec_from_file_location("diagnose_ollama_native", SCRIPT)

@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from video_farm.config import Settings
-from video_farm.discovery import (
+from kadr_farm.config import Settings
+from kadr_farm.discovery import (
     DEFAULT_MAX_PAGES, DEFAULT_MAX_RESULTS, SEARCH_ORDERS, TOPIC_STREAMS,
     discover_youtube, purge_expired_discovery_output,
 )
-from video_farm.discovery_quota import DailyQuotaExceeded, YouTubeSearchQuotaLedger
+from kadr_farm.discovery_quota import DailyQuotaExceeded, YouTubeSearchQuotaLedger
 
 
 def _settings(api_key="test-key", *, data_dir=None):
@@ -74,7 +74,7 @@ def _now():
 
 def test_default_discovery_searches_both_orders_with_80_first_pages(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr('video_farm.discovery._get', _fake_api(calls))
+    monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls))
     settings = _settings(data_dir=tmp_path / 'data')
     report = discover_youtube(settings, tmp_path / 'output', now=_now())
 
@@ -123,7 +123,7 @@ def test_default_discovery_searches_both_orders_with_80_first_pages(tmp_path, mo
 
 def test_custom_query_uses_8_first_pages_and_preserves_order_provenance(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr('video_farm.discovery._get', _fake_api(calls, return_next=False))
+    monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls, return_next=False))
     report = discover_youtube(
         _settings(data_dir=tmp_path / 'data'), tmp_path / 'out',
         query='локальная нейросеть|local AI', now=_now(),
@@ -138,7 +138,7 @@ def test_custom_query_uses_8_first_pages_and_preserves_order_provenance(tmp_path
 
 def test_second_full_run_is_blocked_before_any_new_api_call(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr('video_farm.discovery._get', _fake_api(calls))
+    monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls))
     settings = _settings(data_dir=tmp_path / 'data')
     discover_youtube(settings, tmp_path / 'first', now=_now())
     previous_search_count = len([x for x in calls if x[0] == 'search'])
@@ -150,7 +150,7 @@ def test_second_full_run_is_blocked_before_any_new_api_call(tmp_path, monkeypatc
 
 def test_external_usage_reconciliation_is_persistent_and_reduces_daily_capacity(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr('video_farm.discovery._get', _fake_api(calls, return_next=False))
+    monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls, return_next=False))
     settings = _settings(data_dir=tmp_path / 'data')
     ledger = YouTubeSearchQuotaLedger(settings.data_dir / 'usage' / 'youtube_search_quota.json')
     ledger.set_external_usage(84, now=_now())
@@ -162,7 +162,7 @@ def test_external_usage_reconciliation_is_persistent_and_reduces_daily_capacity(
 
 def test_optional_pagination_uses_only_budget_after_all_first_pages(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr('video_farm.discovery._get', _fake_api(calls, return_next=True))
+    monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls, return_next=True))
     report = discover_youtube(
         _settings(data_dir=tmp_path / 'data'), tmp_path / 'out',
         query='test query', max_pages=2, search_call_budget=10, now=_now(),
@@ -179,7 +179,7 @@ def test_failed_search_attempt_is_counted_before_http_failure(tmp_path, monkeypa
         if path == 'search':
             raise RuntimeError('HTTP 403 (quotaExceeded)')
         return _fake_api([])(path, params, api_key)
-    monkeypatch.setattr('video_farm.discovery._get', failed_get)
+    monkeypatch.setattr('kadr_farm.discovery._get', failed_get)
     settings = _settings(data_dir=tmp_path / 'data')
     with pytest.raises(RuntimeError, match='quotaExceeded'):
         discover_youtube(settings, tmp_path / 'out', query='test', now=_now())

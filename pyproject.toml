@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "video-farm"
+name = "kadr-farm"
 version = "0.2.0"
 description = "Локальная фабрика технологических видео с семантическим монтажом"
 readme = "README.md"
@@ -36,8 +36,8 @@ tts = [
 test = ["pytest>=8.0.0"]
 
 [project.scripts]
-video-farm = "video_farm.cli:main"
-video-farm-semantic = "video_farm.semantic_cli:main"
+kadr-farm = "kadr_farm.cli:main"
+kadr-farm-semantic = "kadr_farm.semantic_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

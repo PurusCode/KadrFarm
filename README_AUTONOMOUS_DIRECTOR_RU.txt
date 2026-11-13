@@ -16,7 +16,7 @@ AI VIDEO FACTORY RU — AUTONOMOUS DIRECTOR OVERLAY 1.1.0
 Скрипт проверит файлы, выполнит editable-install без обновления зависимостей, запустит полный tests/ и проверит CLI.
 
 Пилот 10 сцен:
-  .\.venv\Scripts\python.exe -X utf8 -m video_farm.production_director `
+  .\.venv\Scripts\python.exe -X utf8 -m kadr_farm.production_director `
     --storyboard ".\output\semantic_runs\semantic-e2e-2026-11-07\storyboard_draft.json" `
     --out ".\output\semantic_runs\autonomous-pilot-10-v1_1" `
     --scene-limit 10 --batch-size 2 --speed 0.9 --revision-rounds 2

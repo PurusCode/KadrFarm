@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from video_farm import text_normalization as norm
+from kadr_farm import text_normalization as norm
 
 
 def _fake_num2words(value, lang="ru", to="cardinal", case=None, gender=None):

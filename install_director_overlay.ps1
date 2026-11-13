@@ -1,12 +1,12 @@
 $ErrorActionPreference = "Stop"
 $Root = (Get-Location).Path
 $Required = @(
-  "src\video_farm\director_models.py",
-  "src\video_farm\director_visuals.py",
-  "src\video_farm\director_sources.py",
-  "src\video_farm\director_audio.py",
-  "src\video_farm\director_assembler.py",
-  "src\video_farm\production_director.py",
+  "src\kadr_farm\director_models.py",
+  "src\kadr_farm\director_visuals.py",
+  "src\kadr_farm\director_sources.py",
+  "src\kadr_farm\director_audio.py",
+  "src\kadr_farm\director_assembler.py",
+  "src\kadr_farm\production_director.py",
   "tests\test_autonomous_director_overlay.py",
   "docs\27_AUTONOMOUS_PRODUCTION_DIRECTOR_RU.md"
 )
@@ -24,6 +24,6 @@ Write-Host "Running the complete test suite..." -ForegroundColor Cyan
 & $Python -m pytest tests -q
 if ($LASTEXITCODE -ne 0) { throw "Tests failed. Do not start production." }
 Write-Host "Checking the new CLI..." -ForegroundColor Cyan
-& $Python -X utf8 -m video_farm.production_director --help
+& $Python -X utf8 -m kadr_farm.production_director --help
 if ($LASTEXITCODE -ne 0) { throw "The production_director CLI failed to start" }
 Write-Host "Installation and checks completed. Existing pipeline and .env were not modified." -ForegroundColor Green

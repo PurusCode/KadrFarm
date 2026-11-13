@@ -34,11 +34,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from video_farm.common import parse_json_response, read_json  # noqa: E402
-from video_farm.config import load_settings  # noqa: E402
-from video_farm.llm_structured import _schema_for_provider  # noqa: E402
-from video_farm.models import VisualPlanBatch  # noqa: E402
-from video_farm.visual_planner import SYSTEM_PROMPT  # noqa: E402
+from kadr_farm.common import parse_json_response, read_json  # noqa: E402
+from kadr_farm.config import load_settings  # noqa: E402
+from kadr_farm.llm_structured import _schema_for_provider  # noqa: E402
+from kadr_farm.models import VisualPlanBatch  # noqa: E402
+from kadr_farm.visual_planner import SYSTEM_PROMPT  # noqa: E402
 
 LOG = logging.getLogger("mws_gemma_visual_diagnostic")
 GEMMA_THINK_TOKEN = "<|think|>"

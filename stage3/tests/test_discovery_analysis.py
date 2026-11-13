@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from video_farm.discovery_analysis import analyze_discovery
-from video_farm.discovery import purge_expired_discovery_output
+from kadr_farm.discovery_analysis import analyze_discovery
+from kadr_farm.discovery import purge_expired_discovery_output
 
 
 def _report():

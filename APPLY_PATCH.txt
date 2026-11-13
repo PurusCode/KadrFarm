@@ -4,23 +4,23 @@ AI Video Factory RU — Trend Discovery Stage 2 patch
 Этот архив обновляет существующую команду `discover`; он не содержит весь проект.
 
 Содержимое:
-- src/video_farm/discovery.py — новый широкий поисковый модуль;
-- src/video_farm/cli.py — обновлённая CLI-команда `discover` и параметры;
+- src/kadr_farm/discovery.py — новый широкий поисковый модуль;
+- src/kadr_farm/cli.py — обновлённая CLI-команда `discover` и параметры;
 - tests/test_discovery.py — тесты Discovery v2;
 - docs/TREND_DISCOVERY_STAGE2.md — описание архитектуры и ограничений;
 - README.md — обновлённая документация проекта.
 
 Установка (PowerShell, из корня video-farm):
 1. Сделай резервные копии:
-   Copy-Item src\video_farm\discovery.py src\video_farm\discovery.py.stage1.bak
-   Copy-Item src\video_farm\cli.py src\video_farm\cli.py.stage1.bak
+   Copy-Item src\kadr_farm\discovery.py src\kadr_farm\discovery.py.stage1.bak
+   Copy-Item src\kadr_farm\cli.py src\kadr_farm\cli.py.stage1.bak
    Copy-Item README.md README.md.stage1.bak
 2. Распакуй архив в корень проекта с сохранением каталогов и разреши перезапись файлов.
 3. Проверь:
    .\.venv\Scripts\python.exe -m pytest tests\test_discovery.py -q
-   .\.venv\Scripts\python.exe -m video_farm.cli discover --help
+   .\.venv\Scripts\python.exe -m kadr_farm.cli discover --help
 4. Запусти поиск (используется YOUTUBE_API_KEY из .env):
-   .\.venv\Scripts\python.exe -m video_farm.cli discover --out output\discovery
+   .\.venv\Scripts\python.exe -m kadr_farm.cli discover --out output\discovery
 5. Открой:
    output\discovery\discovery.md
    output\discovery\discovery.json

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
-from video_farm import storyboard
-from video_farm.models import StoryboardResponse
+from kadr_farm import storyboard
+from kadr_farm.models import StoryboardResponse
 
 class FakeStructuredLLM:
     def __init__(self, _settings): pass

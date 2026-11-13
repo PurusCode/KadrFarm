@@ -28,7 +28,7 @@ AI VIDEO FACTORY RU — STAGE 5.2
 служит тестовым справочником пакета; он не копируется поверх установленного Stage 5.1.
 
 ЗАПУСК И ПЕРЕНОС ОТБОРА
-1. Выполните: .\.venv\Scripts\python.exe -m video_farm.cli discover-editor
+1. Выполните: .\.venv\Scripts\python.exe -m kadr_farm.cli discover-editor
 2. Откройте output\discovery\editor.html.
 3. Нажмите «Импортировать отбор» и выберите ранее сохранённый editorial.json. Источник Discovery должен быть тем же самым.
 
@@ -36,7 +36,7 @@ AI VIDEO FACTORY RU — STAGE 5.2
 В «Блокерах» и «Стратегии материалов» используются флажки. Выбирайте несколько пунктов обычными щелчками; Ctrl удерживать не нужно. Значения по-прежнему экспортируются как массивы в editorial.json (schema 1.1).
 
 ЗАПУСК (повторная генерация)
-.\.venv\Scripts\python.exe -m video_farm.cli discover-editor
+.\.venv\Scripts\python.exe -m kadr_farm.cli discover-editor
 
 ОТКРЫТЬ
 Откройте output\discovery\editor.html в браузере. Страница не отправляет запросы

@@ -22,7 +22,7 @@ from .kokoro_engine import synthesize_kokoro
 from .pixabay_media import fetch_pixabay, PixabayError
 from .director_shots import plan_shots
 
-log=logging.getLogger("video_farm.production_director")
+log=logging.getLogger("kadr_farm.production_director")
 
 DIRECTOR_SYSTEM="""Ты — главный режиссёр монтажа AI Video Factory RU, создающий качественный
 русскоязычный технологический видеоролик. Тебе дана готовая раскадровка с точными

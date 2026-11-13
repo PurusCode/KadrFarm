@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from video_farm.discovery_quota import (
+from kadr_farm.discovery_quota import (
     DailyQuotaExceeded, QuotaLedgerError, YouTubeSearchQuotaLedger,
 )
 

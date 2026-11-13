@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from video_farm.models import (
+from kadr_farm.models import (
     ChartData, Claim, ClaimStatus, SourceAvailability,
     VisualBeatDraft, VisualPlanDraft, VisualType, AssetStrategy, Scene,
 )

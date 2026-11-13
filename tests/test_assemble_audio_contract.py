@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from video_farm.assemble import _validate_audio_manifest
+from kadr_farm.assemble import _validate_audio_manifest
 
 
 def _write_wav(

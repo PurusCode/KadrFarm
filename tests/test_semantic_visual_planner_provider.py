@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from video_farm import visual_planner
-from video_farm.models import VisualPlanBatch
+from kadr_farm import visual_planner
+from kadr_farm.models import VisualPlanBatch
 
 
 def _scene():

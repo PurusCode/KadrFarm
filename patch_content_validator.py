@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 
 
-PROJECT_FILE = Path("src/video_farm/content.py")
+PROJECT_FILE = Path("src/kadr_farm/content.py")
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -20,7 +20,7 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 def main() -> None:
     if not PROJECT_FILE.is_file():
         raise SystemExit(
-            "Не найден src/video_farm/content.py. Запустите скрипт из корня video-farm."
+            "Не найден src/kadr_farm/content.py. Запустите скрипт из корня video-farm."
         )
 
     source = PROJECT_FILE.read_text(encoding="utf-8-sig")

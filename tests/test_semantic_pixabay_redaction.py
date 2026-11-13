@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import pytest
 import requests
-from video_farm import pixabay_media
+from kadr_farm import pixabay_media
 
 class FailedResponse:
     status_code=401
