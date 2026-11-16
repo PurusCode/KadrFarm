@@ -13,7 +13,8 @@ from .assets import download_assets
 from .slides import render_slides
 from .assemble import assemble_video, create_description
 from .text_normalization import normalizer_backend
-
+from .production_director import run_pipeline as run_director_pipeline
+from .semantic_cli import _pipeline as run_semantic_pipeline
 
 def _logger(verbose: bool = False) -> None:
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
@@ -384,6 +385,37 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--out-dir", default="output/runs"); r.add_argument("--speed", type=float, default=0.9)
     r.add_argument("--max-keywords", type=int, default=30); r.add_argument("--draft", action="store_true")
     r.set_defaults(func=cmd_run)
+    # --- НОВЫЕ ДВИЖКИ ---
+    dir_parser = sub.add_parser("director", help="Автономный ИИ-режиссер (Storyboard -> Critique -> Produce -> Assemble)")
+    dir_parser.add_argument("--script", required=False, help="Путь к исходному script.json")
+    dir_parser.add_argument("--storyboard", required=False, help="Путь к готовому storyboard.json")
+    dir_parser.add_argument("--out", required=True, help="Папка для результатов (например, output/director_run)")
+    dir_parser.add_argument("--scene-limit", type=int, default=10, help="Сколько сцен обработать (для теста)")
+    dir_parser.add_argument("--batch-size", type=int, default=2)
+    dir_parser.add_argument("--speed", type=float, default=0.9)
+    dir_parser.add_argument("--revision-rounds", type=int, default=2)
+    
+    def _cmd_director(args):
+        report = run_director_pipeline(
+            script_path=Path(args.script) if args.script else None,
+            storyboard_path=Path(args.storyboard) if args.storyboard else None,
+            out_dir=Path(args.out),
+            scene_limit=args.scene_limit,
+            batch_size=args.batch_size,
+            speed=args.speed,
+            revision_rounds=args.revision_rounds
+        )
+        print(f"Видео готово: {report.get('video')}")
+        print(f"QC-отчет: {report.get('postproduction_qc')}")
+        return 0
+    dir_parser.set_defaults(func=_cmd_director)
+
+    sem_parser = sub.add_parser("semantic", help="Семантический конвейер V2 (сцены, TTS, Pixabay, монтаж)")
+    sem_parser.add_argument("--script", required=True)
+    sem_parser.add_argument("--out", required=True)
+    sem_parser.add_argument("--name", default="semantic-video")
+    sem_parser.add_argument("--batch-size", type=int, default=2)
+    sem_parser.set_defaults(func=lambda args: run_semantic_pipeline(args))    
     return p
 
 

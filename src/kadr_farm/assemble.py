@@ -195,9 +195,36 @@ def assemble_video(settings: Settings, script_path: Path, audio_dir: Path, slide
     for wav in audio_inputs: cmd += ["-i", str(wav)]
     filters: list[str] = []
     video_labels = []
+    img_count = 0
+    
     for i, e in enumerate(timeline):
         dur = e["duration"]
-        filters.append(f"[{i}:v]trim=duration={dur:.6f},setpts=PTS-STARTPTS,fps={fps},scale={target_w}:{target_h}:force_original_aspect_ratio=increase,crop={target_w}:{target_h},setsar=1,format=yuv420p[v{i}]")
+        if e["kind"] == "image":
+            frames = e["frames"]
+            effect_idx = img_count % 4
+            img_count += 1
+            
+            # Выбираем один из 4 эффектов Ken Burns
+            if effect_idx == 0:
+                # 1. Плавный зум (приближение) к центру
+                kb = f"zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={target_w}x{target_h}:fps={fps}"
+            elif effect_idx == 1:
+                # 2. Плавный зум (отдаление) от центра
+                kb = f"zoompan=z='if(eq(on,1),1.5,max(zoom-0.0015,1))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={target_w}x{target_h}:fps={fps}"
+            elif effect_idx == 2:
+                # 3. Панорама слева направо
+                kb = f"zoompan=z='1.2':x='(iw-iw/zoom)*on/{frames}':y='ih/2-(ih/zoom/2)':d=1:s={target_w}x{target_h}:fps={fps}"
+            else:
+                # 4. Панорама справа налево
+                kb = f"zoompan=z='1.2':x='(iw-iw/zoom)*(1-on/{frames})':y='ih/2-(ih/zoom/2)':d=1:s={target_w}x{target_h}:fps={fps}"
+                
+            # Слегка увеличиваем картинку перед зумом, чтобы не было пикселей
+            up_w, up_h = int(target_w * 1.5), int(target_h * 1.5)
+            filters.append(f"[{i}:v]trim=duration={dur:.6f},setpts=PTS-STARTPTS,fps={fps},scale={up_w}:{up_h}:force_original_aspect_ratio=increase,crop={up_w}:{up_h},{kb},setsar=1,format=yuv420p[v{i}]")
+        else:
+            # Для B-roll (видео) оставляем стандартную обработку без зума
+            filters.append(f"[{i}:v]trim=duration={dur:.6f},setpts=PTS-STARTPTS,fps={fps},scale={target_w}:{target_h}:force_original_aspect_ratio=increase,crop={target_w}:{target_h},setsar=1,format=yuv420p[v{i}]")
+            
         video_labels.append(f"[v{i}]")
     filters.append("".join(video_labels) + f"concat=n={len(video_labels)}:v=1:a=0[outv]")
     audio_labels = []
