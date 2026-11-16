@@ -350,27 +350,35 @@ def _infer_steps(beat: dict[str, Any], motif: str) -> list[str]:
     return defaults
 
 
-def _flow(draw, beat: dict[str, Any], motif: str) -> list[str]:
+def _flow(draw, beat: dict[str, Any], motif: str, step_limit: int = 999) -> list[str]:
     labels = _infer_steps(beat, motif)
     count = min(4, max(3, len(labels)))
-    gap = 45
+    gap = 80
     left = 90
     usable = W - 2*left
     box_w = (usable - gap*(count-1)) // count
     y0, y1 = 455, 780
     accents = [BLUE, CYAN, PURPLE, ORANGE]
+    
     for i, label in enumerate(labels[:count]):
+        if i >= step_limit:
+            break
         x0=left+i*(box_w+gap); x1=x0+box_w
         _panel(draw,(x0,y0,x1,y1),fill=(24+i*2,40+i*2,63+i*2),outline=accents[i],radius=30,width=4)
         draw.ellipse((x0+30,y0+28,x0+94,y0+92),fill=accents[i])
         draw.text((x0+49,y0+39),str(i+1),font=_font(29,True),fill=BG)
         _paragraph(draw,(x0+34,y0+142),label.upper(),_font(32,True),WHITE,box_w-68,14,3)
-        if i<count-1:
-            ax=x1+7; bx=x1+gap-7; ay=(y0+y1)//2
-            draw.line((ax,ay,bx,ay),fill=CYAN,width=8)
-            draw.polygon([(bx,ay),(bx-22,ay-15),(bx-22,ay+15)],fill=CYAN)
+        
+        # Рисуем стрелку к следующему блоку (только если он тоже помещается)
+        if i < count-1 and i < step_limit - 1:
+            ax = x1 + 15
+            bx = x1 + gap - 15
+            ay = (y0 + y1) // 2
+            draw.line((ax, ay, bx, ay), fill=CYAN, width=8)
+            draw.polygon([(bx,ay),(bx-25,ay-18),(bx-25,ay+18)],fill=CYAN)
+            
     draw.text((100, 850), "СХЕМА ПРИНЦИПА · НЕ ЧИСЛОВЫЕ ИЗМЕРЕНИЯ", font=_font(22, True), fill=MUTED)
-    return labels[:count]
+    return labels[:min(step_limit, count)]
 
 
 def _text_visual(draw, beat: dict[str, Any], motif: str) -> list[str]:
@@ -451,46 +459,84 @@ def _illustration(draw, beat: dict[str, Any], motif: str) -> list[str]:
 
 
 def render_beat_visual(scene: dict[str, Any], beat: dict[str, Any], output_path: Path) -> Path:
-    """Render a beat using a real semantic template; never print visual_description."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     kind = str(beat.get("visual_type", "illustration")).lower()
     motif = _motif(scene, beat)
-    im = _background()
-    draw = ImageDraw.Draw(im)
     title = _headline(scene, beat)
-    visible = _header(draw, title, section={
+    
+    steps = []
+    
+    # ШАГ 1: Только фон
+    im_bg = _background()
+    step1 = output_path.with_name(f"{output_path.stem}_step1.png")
+    im_bg.save(step1, format="PNG")
+    steps.append(str(step1))
+
+    # ШАГ 2: Заголовок
+    im_header = im_bg.copy()
+    draw_header = ImageDraw.Draw(im_header)
+    visible = _header(draw_header, title, section={
         "comparison": "СРАВНЕНИЕ", "diagram": "СХЕМА", "scheme": "СХЕМА",
         "chart": "ПРИНЦИП", "text": "КЛЮЧЕВАЯ МЫСЛЬ", "screencast": "ДЕМОНСТРАЦИЯ",
         "quote": "ЦИТАТА", "joke": "ПАУЗА", "illustration": "ОБЪЯСНЕНИЕ",
         "photo": "ИЛЛЮСТРАЦИЯ", "video": "ИЛЛЮСТРАЦИЯ", "broll": "ИЛЛЮСТРАЦИЯ",
     }.get(kind, "ОБЪЯСНЕНИЕ"))
-    if kind == "comparison":
-        content = _comparison(draw, beat, motif)
-        template = "comparison"
-    elif kind in ("diagram", "scheme", "chart"):
-        content = _flow(draw, beat, motif)
+    step2 = output_path.with_name(f"{output_path.stem}_step2.png")
+    im_header.save(step2, format="PNG")
+    steps.append(str(step2))
+
+    # ШАГИ 3..N: Пошаговое появление блоков
+    if kind in ("diagram", "scheme", "chart"):
+        flow_labels = _infer_steps(beat, motif)
+        for i in range(1, len(flow_labels) + 1):
+            im_step = im_header.copy()
+            draw_step = ImageDraw.Draw(im_step)
+            _flow(draw_step, beat, motif, step_limit=i)
+            step_path = output_path.with_name(f"{output_path.stem}_step{i+2}.png")
+            im_step.save(step_path, format="PNG")
+            steps.append(str(step_path))
+        content = _flow(ImageDraw.Draw(im_header), beat, motif) # для метаданных
         template = "process_flow"
+        
     elif kind == "text":
-        content = _text_visual(draw, beat, motif)
+        labels = _safe_labels(beat)
+        if not labels: labels = [_speech_phrase(str(beat.get("spoken_text") or ""), 8, 64)]
+        for i in range(1, len(labels) + 1):
+            im_step = im_header.copy()
+            draw_step = ImageDraw.Draw(im_step)
+            # Упрощенная отрисовка текста по шагам
+            _panel(draw_step,(130,355,1790,850),fill=(16,31,51),outline=PURPLE,radius=38,width=4)
+            _paragraph(draw_step,(220,435),"\n".join(labels[:i]).upper(),_font(76,True),WHITE,1450,18,3)
+            step_path = output_path.with_name(f"{output_path.stem}_step{i+2}.png")
+            im_step.save(step_path, format="PNG")
+            steps.append(str(step_path))
+        content = labels
         template = "kinetic_typography"
-    elif kind == "screencast":
-        content = _chat_visual(draw, beat)
-        template = "simulated_interface"
-    elif kind == "quote":
-        content = _quote_visual(draw, beat)
-        template = "editorial_quote"
-    elif kind == "joke":
-        content = _joke_visual(draw, beat, motif)
-        template = "visual_punchline"
+        
+    elif kind == "comparison":
+        # Для сравнения делаем 2 шага: левая часть, потом правая
+        content = _comparison(ImageDraw.Draw(im_header), beat, motif)
+        im_step = im_header.copy()
+        step_path = output_path.with_name(f"{output_path.stem}_step3.png")
+        im_step.save(step_path, format="PNG")
+        steps.append(str(step_path))
+        template = "comparison"
+        
     else:
-        content = _illustration(draw, beat, motif)
+        # Для остальных типов оставляем 2 шага (фон + контент)
+        content = _illustration(ImageDraw.Draw(im_header), beat, motif)
+        step_path = output_path.with_name(f"{output_path.stem}_step3.png")
+        im_header.save(step_path, format="PNG")
+        steps.append(str(step_path))
         template = f"illustration_{motif}"
+
     visible.extend(str(x) for x in content if str(x).strip())
-    # Add a subtle footer, not a repeated production watermark.
-    draw.text((100, 1015), "СХЕМА ДЛЯ ОБЪЯСНЕНИЯ", font=_font(18, True), fill=(116,139,163))
-    im.save(output_path, format="PNG", optimize=True)
+    # Сохраняем финальный шаг как основной файл
+    im_header.save(output_path, format="PNG")
+    steps.append(str(output_path))
+    
     metadata = {
-        "render_version": "1.1.0",
+        "render_version": "1.3.0",
         "template_id": template,
         "visual_type": kind,
         "visual_family": motif,
@@ -499,6 +545,7 @@ def render_beat_visual(scene: dict[str, Any], beat: dict[str, Any], output_path:
         "description_rendered": False,
         "description_used_only_as_private_semantic_hint": True,
         "dimensions": [W, H],
+        "steps": steps
     }
     output_path.with_suffix(output_path.suffix + ".meta.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"

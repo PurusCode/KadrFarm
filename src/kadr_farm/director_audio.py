@@ -67,7 +67,7 @@ def _music_pad(duration: float, cue: str) -> np.ndarray:
     return (pad*slow*fade*volume).astype(np.float32)
 
 def build_master_audio(beats: list[dict[str,Any]], output_path: Path,
-                       *, pause_seconds: float=0.12, add_procedural_bed: bool=True) -> dict[str,Any]:
+                       *, pause_seconds: float=0.12, add_procedural_bed: bool=False) -> dict[str,Any]:
     """Concatenate exact beat WAVs; beat boundaries are where visuals change."""
     if not beats: raise ValueError("Нет аудиобитов")
     narration_parts=[]; timeline=[]; cursor=0.0

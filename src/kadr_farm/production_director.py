@@ -1,4 +1,5 @@
 """Autonomous director: storyboard -> direction -> critique -> repair -> evidence audit -> Kokoro -> visuals -> edit -> QC."""
+
 from __future__ import annotations
 import argparse, hashlib, json, logging, re, shutil, wave, os, subprocess
 from pathlib import Path
@@ -10,6 +11,7 @@ from PIL import Image
 from .common import read_json, write_json
 from .config import load_settings
 from .storyboard import create_storyboard
+from .html_renderer import render_html_video
 from .llm_structured import StructuredLLMRouter
 from .director_models import DirectorBatch, CritiqueBatch
 from .director_visuals import (render_beat_visual, render_stock_overlay,
@@ -24,47 +26,31 @@ from .director_shots import plan_shots
 
 log=logging.getLogger("kadr_farm.production_director")
 
-DIRECTOR_SYSTEM="""Ты — главный режиссёр монтажа AI Video Factory RU, создающий качественный
-русскоязычный технологический видеоролик. Тебе дана готовая раскадровка с точными
-voice_text. Не переписывай и не сокращай речь. Раздели voice_text каждой сцены на 1–4
-ПОСЛЕДОВАТЕЛЬНЫХ ФРАГМЕНТА spoken_text. Склейка spoken_text в исходном порядке с обычными
-пробелами должна в точности сохранить исходную речь (все слова, пунктуацию и порядок).
-Это не субтитры и не пересказ: каждый spoken_text — точный непрерывный фрагмент оригинала.
-Каждому фрагменту назначь визуал, который показывает именно эту фразу. Так как Kokoro
-озвучивает каждый фрагмент отдельно, длительность визуала будет привязана к реальному WAV
-этого фрагмента, а не к придуманному проценту сцены.
+DIRECTOR_SYSTEM="""Ты — главный режиссёр монтажа и моушн-дизайнер AI Video Factory RU, создающий динамичное, залипательное видео. 
+Тебе дана готовая раскадровка с точными voice_text. Не переписывай и не сокращай речь. Раздели voice_text каждой сцены на 1–4 последовательных фрагмента spoken_text. 
+Склейка spoken_text в исходном порядке должна в точности сохранить исходную речь.
 
-РАЗРЕШЁННЫЕ АДАПТЕРЫ — ТОЛЬКО ДВА:
-1) stock / pixabay: реальные фото или видеоматериалы. Для каждого stock beat дай 2–4
-конкретных английских search_queries, описывающих объект/действие в кадре.
-2) rendered / internal_renderer: локальная оригинальная графика. Поддерживаемые шаблоны:
-comparison (сравнение двух объектов), diagram/scheme (последовательность этапов), text
-(типографический акцент), illustration (смысловая графическая метафора), screencast
-(только явно маркированная учебная симуляция интерфейса), quote (короткая мысль), joke
-(визуальная шутка). Для реальных фото/видео используй только stock.
-ВАЖНОЕ РАЗДЕЛЕНИЕ ПОЛЕЙ:
-- visual_description — внутренняя режиссёрская инструкция для программы. НИКОГДА не должна
-  становиться надписью или заголовком в готовом кадре.
-- on_screen_text — только реальные короткие слова/подписи, которые зритель должен увидеть.
-  Не пиши туда описания картинки, указания художнику, слова «макет», «стилизованный»,
-  «появляется», «слева/справа», «фон», «иконка», «на экране» и т.п.
-- Для illustration опиши конкретный объект/метафору в visual_description, а on_screen_text
-  оставь пустым или заполни 1–3 короткими смысловыми подписями.
-- Для diagram/scheme задай 3–4 реальные подписи этапов в on_screen_text, если они нужны.
-- Для screencast не выдумывай фактические ответы, проценты и интерфейсы реальных продуктов;
-  показывай только учебную симуляцию, явно помеченную на кадре.
-НИКОГДА не возвращай manual, screencast strategy, generated или других провайдеров.
-Визуальные типы чередуй осмысленно, не ставь одинаковые шаблоны подряд без необходимости.
-Экранные надписи по-русски, до 40 символов. Не вставляй английский учебный текст в русскую
-речь. Не придумывай измеренные проценты, количественные сравнения или источники. Если пример
-условный, явно пометь его условность. Не делай chart с фиктивными данными.
-Учитывай, что фактические SFX/музыкальные эффекты будут созданы локальным процедурным
-звуковым генератором на основе name/purpose/cue; не указывай URL и лицензии. claims — только
-фактические утверждения из речи/визуала и URL-кандидаты, не подтверждённые факты.
-Для каждого beat укажи motion и при необходимости короткие SFX. Заполняй ВСЕ поля схемы:
-если claims нет — claims=[]; если cue нет — music_cue=""; для gen_prompt без промпта — null;
-для отсутствующих SFX и подписей — пустые списки. Верни по одному плану на каждый переданный
-scene_id и только для них."""
+Твоя задача — сделать так, чтобы визуал был ЖИВЫМ и объяснял тему шаг за шагом, а не просто показывал статичные картинки. 
+
+РАЗРЕШЕННЫЕ АДАПТЕРЫ — ТОЛЬКО ДВА:
+1) stock / pixabay: реальные фото или видеоматериалы. Для каждого stock beat дай 2–4 конкретных английских search_queries, описывающих физические объекты или действия. СТРОГО ЗАПРЕЩЕНО использовать абстрактные метафоры! (Не "iron confidence", а "serious robot face", "heavy metal machine"). 
+2) rendered / internal_renderer: локальная оригинальная графика.
+
+ПРАВИЛА ДЛЯ ОБУЧАЮЩИХ СХЕМ И АНИМАЦИИ:
+Если ты объясняешь процесс (визуальный тип "diagram", "scheme", "chart"), ты ОБЯЗАН заполнить поле on_screen_text как пошаговую схему из 3-4 коротких этапов (по 1-2 слова каждый). 
+Пример 1: on_screen_text: ["Запрос", "Токены", "Ответ"]. Рендерер нарисует блоки и соединит их стрелками!
+Пример 2: on_screen_text: ["Текст", "Разбивка", "Поиск", "Генерация"].
+Если ты делаешь сравнение (visual_type "comparison"), заполни on_screen_text двумя противоположными понятиями: ["Поисковик", "Нейросеть"].
+Для визуального типа "text" (кинетическая типографика) пиши короткие, рубленые фразы в on_screen_text: ["Не база данных", "Предсказание слов"].
+
+ЗАПРЕЩЕНО:
+- Писать в on_screen_text целые предложения (максимум 3-4 слова на один блок).
+- Использовать manual, screencast strategy или generated.
+- Оставлять пустой on_screen_text, если выбран diagram или comparison.
+
+Учитывай, что SFX будут созданы локальным процедурным генератором. claims — только фактические утверждения. 
+Для каждого beat укажи motion и при необходимости короткие SFX. Заполняй ВСЕ поля схемы.
+Верни по одному плану на каждый переданный scene_id и только для них."""
 
 CRITIC_SYSTEM="""Ты — независимый AI-редактор и технический режиссёр, не автор первоначального плана.
 Проверяй визуальное решение в сравнении с точным voice_text каждого фрагмента. Критерии:
@@ -263,17 +249,23 @@ def _asset_for_beat(settings: Any, scene: dict[str,Any], beat: dict[str,Any],
                     asset["overlay_path"]=str(overlay.resolve())
                 return asset
         warnings.append(f"{scene['id']}: Pixabay не дал подходящий материал; fallback=internal_renderer")
-    # Unsupported operator/generative strategies are impossible at schema level; stock fallback also lands here.
-    image=render_beat_visual(scene,beat,visuals_dir/f"{scene['id']}_{index:02d}_rendered.png")
-    meta_path=image.with_suffix(image.suffix+".meta.json")
-    meta={}
-    if meta_path.is_file():
-        try: meta=json.loads(meta_path.read_text(encoding="utf-8"))
-        except (OSError,json.JSONDecodeError): meta={}
-    return {"path":str(image.resolve()),"media_type":"image","source":"AI Video Factory local renderer",
-            "source_url":None,"creator":"Project renderer","license_name":"Project original graphics",
-            "rights_status":"project_generated","sha256":hashlib.sha256(image.read_bytes()).hexdigest(),
-            "template_id":meta.get("template_id"),"visual_family":meta.get("visual_family")}
+    # Используем новый HTML/CSS рендерер!
+    beat_data = dict(beat)
+    beat_data["scene_meaning"] = scene.get("meaning", "")
+    
+    # Длительность мы возьмем из аудио, но пока ставим заглушку 5 сек (ее перезапишет assembler)
+    video_file = visuals_dir / f"{scene['id']}_{index:02d}_rendered.mp4"
+    video_file = render_html_video(beat_data, duration=6.0, output_path=video_file)
+    
+    return {
+        "path": str(video_file.resolve()),
+        "media_type": "video",  # Теперь это видео, а не картинка!
+        "source": "HTML/CSS Renderer",
+        "source_url": None, "creator": "Project renderer", "license_name": "Project original graphics",
+        "rights_status": "project_generated", "sha256": "html_video",
+        "template_id": "html_css",
+        "visual_family": "modern"
+    }
 
 def _wav_duration(path: Path) -> float:
     with wave.open(str(path),"rb") as wf:
@@ -322,6 +314,7 @@ def _produce(settings: Any, scenes: list[dict[str,Any]], plans: list[dict[str,An
             "visual_type":beat.get("visual_type"),"visual_description":beat.get("visual_description"),
             "template_id":asset.get("template_id"),"visual_family":asset.get("visual_family"),
             "overlay_path":asset.get("overlay_path"),
+            "steps": asset.get("steps"),  # <--- ВОТ ЭТА СТРОЧКА ПЕРЕДАЕТ ШАГИ!
             "start_sec_estimate":round(cursor,4)})
         cursor += duration
     return beats,{"status":"complete","audio_manifest":str((audio_dir/"manifest.json").resolve()),

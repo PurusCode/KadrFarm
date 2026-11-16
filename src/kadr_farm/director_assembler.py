@@ -25,40 +25,95 @@ def _render_segment(settings: Any, beat: dict[str,Any], duration: float, output:
     if not source.is_file(): raise FileNotFoundError(f"Visual not found: {source}")
     width,height,fps=int(settings.width),int(settings.height),int(settings.fps)
     is_video=beat.get("media_type")=="video"
-    if is_video:
-        inputs=["-stream_loop","-1","-i",str(source)]
-    else:
-        inputs=["-loop","1","-framerate",str(fps),"-i",str(source)]
     overlay=beat.get("overlay_path")
-    if overlay and Path(overlay).is_file():
-        inputs += ["-loop","1","-framerate",str(fps),"-i",str(overlay)]
-        fc=(f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},fps={fps},setsar=1[base];"
-            f"[1:v]scale={width}:{height},format=rgba[ov];"
-            f"[base][ov]overlay=0:0:shortest=1,format=yuv420p[v]")
-        maps=["-filter_complex",fc,"-map","[v]"]
-    else:
-        base=(f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-              f"crop={width}:{height},setsar=1")
-        motion=beat.get("motion","static")
-        if not is_video and motion in ("slow_zoom","slow_pan","zoom_out"):
-            if motion == "slow_pan":
-                zoom_expr="1.06"
-                x_expr="(iw-iw/zoom)*min(on/900,1)"
-            elif motion == "zoom_out":
-                zoom_expr="max(1.0,1.06-on*0.00012)"
-                x_expr="iw/2-(iw/zoom/2)"
+    
+    inputs = []
+    maps = []
+    
+    steps = beat.get("steps", [])
+    if not is_video and steps and len(steps) > 1 and not overlay:
+        # МАГИЯ АНИМАЦИИ: Собираем видео из N-шагов с перекрестным затуханием
+        n = len(steps)
+        fade_dur = 0.4 # Длительность перехода между шагами
+        t_step = (duration - (n - 1) * fade_dur) / n
+        
+        if t_step <= 0:
+            t_step = duration / n
+            fade_dur = 0.0
+            
+        fc_parts = []
+        for i, step in enumerate(steps):
+            # Высчитываем точную длительность для каждого слоя
+            if fade_dur > 0:
+                if i == 0 or i == n - 1:
+                    l = t_step + fade_dur
+                else:
+                    l = t_step + 2 * fade_dur
             else:
-                zoom_expr="min(zoom+0.00012,1.06)"
-                x_expr="iw/2-(iw/zoom/2)"
-            vf=(base+f",zoompan=z='{zoom_expr}':x='{x_expr}':"
-                f"y='ih/2-(ih/zoom/2)':d=1:s={width}x{height}:fps={fps},")
+                l = t_step
+                
+            inputs.extend(["-loop", "1", "-framerate", str(fps), "-t", f"{l:.4f}", "-i", str(step)])
+            fc_parts.append(f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,format=yuv420p[v{i}]")
+        
+        # Пошаговое наложение слоев через xfade
+        if n > 1 and fade_dur > 0:
+            prev = "v0"
+            for i in range(1, n):
+                offset = i * t_step + (i - 1) * fade_dur
+                out = "vout" if i == n - 1 else f"x{i}"
+                fc_parts.append(f"[{prev}][v{i}]xfade=transition=fade:duration={fade_dur:.4f}:offset={offset:.4f}[{out}]")
+                prev = out
         else:
-            vf=base+f",fps={fps},"
-        vf += "format=yuv420p"
-        if beat.get("transition_in")=="fade":
-            vf += ",fade=t=in:st=0:d=0.16"
-        maps=["-vf",vf]
+            fc_parts.append(f"[v0]null[vout]")
+            
+        # Добавляем плавный зум ко всему результату
+        motion=beat.get("motion","static")
+        if motion in ("slow_zoom","slow_pan","zoom_out"):
+            if motion == "slow_pan":
+                zoom_expr="1.15"; x_expr="(iw-iw/zoom)*min(on/900,1)"
+            elif motion == "zoom_out":
+                zoom_expr="max(1.0,1.15-on*0.0005)"; x_expr="iw/2-(iw/zoom/2)"
+            else:
+                zoom_expr="min(zoom+0.0005,1.15)"; x_expr="iw/2-(iw/zoom/2)"
+            fc_parts.append(f"[vout]zoompan=z='{zoom_expr}':x='{x_expr}':y='ih/2-(ih/zoom/2)':d=1:s={width}x{height}:fps={fps}[vfinal]")
+        else:
+            fc_parts.append(f"[vout]fps={fps}[vfinal]")
+            
+        maps = ["-filter_complex", ";".join(fc_parts), "-map", "[vfinal]"]
+        
+    else:
+        # Если это стоковое видео или с оверлеем, используем старую логику
+        if is_video:
+            inputs=["-stream_loop","-1","-i",str(source)]
+        else:
+            inputs=["-loop","1","-framerate",str(fps),"-i",str(source)]
+            
+        if overlay and Path(overlay).is_file():
+            inputs += ["-loop","1","-framerate",str(fps),"-i",str(overlay)]
+            fc=(f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height},fps={fps},setsar=1[base];"
+                f"[1:v]scale={width}:{height},format=rgba[ov];"
+                f"[base][ov]overlay=0:0:shortest=1,format=yuv420p[v]")
+            maps=["-filter_complex",fc,"-map","[v]"]
+        else:
+            base=(f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+                  f"crop={width}:{height},setsar=1")
+            motion=beat.get("motion","static")
+            if not is_video and motion in ("slow_zoom","slow_pan","zoom_out"):
+                if motion == "slow_pan":
+                    zoom_expr="1.15"; x_expr="(iw-iw/zoom)*min(on/900,1)"
+                elif motion == "zoom_out":
+                    zoom_expr="max(1.0,1.15-on*0.0005)"; x_expr="iw/2-(iw/zoom/2)"
+                else:
+                    zoom_expr="min(zoom+0.0005,1.15)"; x_expr="iw/2-(iw/zoom/2)"
+                vf=(base+f",zoompan=z='{zoom_expr}':x='{x_expr}':y='ih/2-(ih/zoom/2)':d=1:s={width}x{height}:fps={fps},")
+            else:
+                vf=base+f",fps={fps},"
+            vf += "format=yuv420p"
+            if beat.get("transition_in")=="fade":
+                vf += ",fade=t=in:st=0:d=0.16"
+            maps=["-vf",vf]
+
     output.parent.mkdir(parents=True,exist_ok=True)
     cmd=[settings.ffmpeg,"-y","-hide_banner","-loglevel","error",*inputs,*maps,
         "-an","-t",f"{duration:.4f}","-r",str(fps),"-c:v","libx264",

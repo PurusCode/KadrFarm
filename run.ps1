@@ -1,3 +1,4 @@
+$env:PYTHONUTF8=1
 param(
   [Parameter(Mandatory=$true, Position=0)] [string]$Topic,
   [string]$Name = 'video',
