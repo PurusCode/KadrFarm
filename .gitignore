@@ -31,3 +31,5 @@ build/
 
 # User-specific editorial exports
 /editorial*.json
+
+data/audio/

@@ -2,11 +2,15 @@
 
 Subdivides approved director beats into visual shots while preserving speech.
 No timestamps are generated: durations come from measured Kokoro WAV files.
+
+v2.1: retry с корректирующим промптом + детерминированный fallback
+(1 shot на beat), если модель не соблюдает контракт scene_id.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -15,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .director_models import DirectorBeat
 from .llm_structured import StructuredLLMRouter
+
+log = logging.getLogger("kadr_farm.director_shots")
 
 
 class Shot(DirectorBeat):
@@ -60,7 +66,17 @@ SYSTEM_PROMPT = """Ты — монтажёр-режиссёр, создающи�
 - cut_reason кратко объясняет, почему здесь нужен отдельный монтажный план.
 - visual_description — внутренняя инструкция движку, а не видимый текст.
   on_screen_text — только короткая надпись для зрителя.
-Верни ровно один SceneShotPlan на каждую входную сцену."""
+
+КОНТРАКТ ОТВЕТА (строго):
+- Верни РОВНО ОДИН объект SceneShotPlan на каждую входную сцену.
+- Список scenes должен содержать те же scene_id, что на входе, без дубликатов,
+  без дополнительных и без пропущенных. Несколько планов для одной сцены ЗАПРЕЩЕНЫ.
+- Все shots одной сцены находятся внутри её единственного объекта SceneShotPlan."""
+
+REPAIR_SUFFIX = """
+ПРЕДЫДУЩИЙ ОТВЕТ ОТКЛОНЁН ВАЛИДАТОРОМ. Исправь только структуру ответа:
+ровно один SceneShotPlan на каждую входную сцену, scene_id копируй дословно,
+без дубликатов. Содержимое shots пересобери заново по правилам выше."""
 
 
 def _norm(value: str) -> str:
@@ -125,6 +141,42 @@ def _validate_cached_scene(
     return validated
 
 
+def _accept_batch(
+    result: ShotPlanBatch,
+    batch: list[dict[str, Any]],
+    plan_by_id: dict[str, dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]] | None, str | None]:
+    received = [item.scene_id for item in result.scenes]
+    expected = [scene["id"] for scene in batch]
+    if (len(received) != len(expected) or set(received) != set(expected)
+            or len(set(received)) != len(received)):
+        return None, f"wrong scene IDs: expected {expected}, got {received}"
+    rows_by: dict[str, list[dict[str, Any]]] = {}
+    for item in result.scenes:
+        scene = next(s for s in batch if s["id"] == item.scene_id)
+        rows = [shot.model_dump(mode="json") for shot in item.shots]
+        try:
+            rows_by[item.scene_id] = _validate_cached_scene(
+                scene["id"], plan_by_id[scene["id"]]["beats"], rows)
+        except ValueError as exc:
+            return None, str(exc)
+    return rows_by, None
+
+
+def _fallback_shots(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Детерминированный план: один shot на beat. Покрытие речи точное по построению."""
+    rows = []
+    for i, beat in enumerate(plan["beats"], 1):
+        source_id = f"b{i:02d}"
+        rows.append(Shot.model_validate({
+            **beat,
+            "shot_id": f"{source_id}_s01",
+            "source_beat_id": source_id,
+            "cut_reason": "fallback: один shot на beat, LLM shot-план отклонён валидатором",
+        }).model_dump(mode="json"))
+    return rows
+
+
 def plan_shots(
     settings: Any,
     scenes: list[dict[str, Any]],
@@ -149,21 +201,20 @@ def plan_shots(
     source_fingerprint = hashlib.sha256(
         json.dumps(
             {"scenes": scenes, "plans": director_plans},
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()
 
     progress_path = output_path.with_suffix(".progress.json")
     completed: dict[str, list[dict[str, Any]]] = {}
+    fallback_scenes: list[str] = []
     if progress_path.is_file():
         checkpoint = json.loads(progress_path.read_text(encoding="utf-8-sig"))
         if checkpoint.get("source_sha256") != source_fingerprint:
-            raise ValueError(
+            log.warning(
                 "Shot planner checkpoint belongs to different input; "
-                "choose a fresh output directory"
-            )
+                "discarding stale checkpoint and re-planning shots")
+            checkpoint = {}
         cached = checkpoint.get("completed", {})
         if not isinstance(cached, dict):
             raise ValueError("Shot planner checkpoint has invalid completed section")
@@ -172,8 +223,8 @@ def plan_shots(
             raise ValueError(f"Shot planner checkpoint contains unknown scenes: {sorted(unknown)}")
         for scene_id, rows in cached.items():
             completed[scene_id] = _validate_cached_scene(
-                scene_id, plan_by_id[scene_id]["beats"], rows
-            )
+                scene_id, plan_by_id[scene_id]["beats"], rows)
+        fallback_scenes = list(checkpoint.get("fallback_scenes", []))
 
     router = StructuredLLMRouter(settings)
     pending = [scene for scene in scenes if scene["id"] not in completed]
@@ -192,31 +243,36 @@ def plan_shots(
                 ],
             })
 
-        result = router.complete(
-            ShotPlanBatch,
-            SYSTEM_PROMPT,
-            "Составь монтажный shot-план для следующих сцен.\n"
-            + json.dumps(payload, ensure_ascii=False),
-            temperature=0.2,
-            max_tokens=min(8500, 2200 + len(batch) * 2600),
-        )
-        received = [item.scene_id for item in result.scenes]
-        expected_ids = [scene["id"] for scene in batch]
-        if len(received) != len(set(received)) or set(received) != set(expected_ids):
-            raise ValueError(
-                f"Shot planner returned wrong scene IDs: expected {expected_ids}, got {received}"
+        base_prompt = ("Составь монтажный shot-план для следующих сцен.\n"
+                       + json.dumps(payload, ensure_ascii=False))
+        rows_by: dict[str, list[dict[str, Any]]] | None = None
+        error: str | None = None
+        for attempt in range(2):
+            result = router.complete(
+                ShotPlanBatch,
+                SYSTEM_PROMPT if attempt == 0 else SYSTEM_PROMPT + REPAIR_SUFFIX,
+                base_prompt if attempt == 0 else
+                ("ОШИБКА ВАЛИДАЦИИ: " + str(error) + "\n" + base_prompt),
+                temperature=0.2 if attempt == 0 else 0.05,
+                max_tokens=min(8500, 2200 + len(batch) * 2600),
             )
+            rows_by, error = _accept_batch(result, batch, plan_by_id)
+            if rows_by is not None:
+                break
+            log.warning("Shot planner attempt %d rejected: %s", attempt + 1, error)
 
-        for item in result.scenes:
-            rows = [shot.model_dump(mode="json") for shot in item.shots]
-            completed[item.scene_id] = _validate_cached_scene(
-                item.scene_id, plan_by_id[item.scene_id]["beats"], rows
-            )
+        if rows_by is None:
+            ids = [s["id"] for s in batch]
+            log.warning("Shot planner fallback (1 shot/beat) for scenes %s: %s", ids, error)
+            rows_by = {s["id"]: _fallback_shots(plan_by_id[s["id"]]) for s in batch}
+            fallback_scenes.extend(ids)
 
+        completed.update(rows_by)
         _atomic_json(progress_path, {
             "source_sha256": source_fingerprint,
             "completed": completed,
             "completed_scene_count": len(completed),
+            "fallback_scenes": sorted(set(fallback_scenes)),
             "status": "in_progress",
         })
 
@@ -238,21 +294,23 @@ def plan_shots(
             "beats": rows,
         })
 
-    payload = {
+    payload_out = {
         "schema_version": "2.0-shot-edl",
         "status": "validated",
         "source_sha256": source_fingerprint,
         "scene_count": len(flattened),
         "source_beat_count": sum(len(plan["beats"]) for plan in director_plans),
         "shot_count": sum(len(plan["beats"]) for plan in flattened),
+        "fallback_scenes": sorted(set(fallback_scenes)),
         "timing_policy": "measured_kokoro_wav_duration; no model-generated timestamps",
         "plans": flattened,
     }
-    _atomic_json(output_path, payload)
+    _atomic_json(output_path, payload_out)
     _atomic_json(progress_path, {
         "source_sha256": source_fingerprint,
         "completed": completed,
         "completed_scene_count": len(completed),
+        "fallback_scenes": sorted(set(fallback_scenes)),
         "status": "complete",
     })
-    return payload
+    return payload_out
