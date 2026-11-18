@@ -380,6 +380,8 @@ def purge_expired_discovery_output(out_dir: Path, *, now: dt.datetime | None = N
     (out_dir / "discovery.md").unlink(missing_ok=True)
     (out_dir / "topics.json").unlink(missing_ok=True)
     (out_dir / "topics.md").unlink(missing_ok=True)
+    (out_dir / "recommendations.json").unlink(missing_ok=True)
+    (out_dir / "recommendations.md").unlink(missing_ok=True)
     (out_dir / "editor.html").unlink(missing_ok=True)
     (out_dir / "editorial.json").unlink(missing_ok=True)
     return True

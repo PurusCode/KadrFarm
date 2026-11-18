@@ -6,6 +6,7 @@ from .common import ROOT, ensure_dir, write_json, read_json
 from .discovery import (discover_youtube, purge_expired_discovery_output,
                         DEFAULT_MAX_RESULTS, DEFAULT_MAX_PAGES, DEFAULT_SEARCH_CALL_BUDGET)
 from .discovery_analysis import analyze_discovery
+from .discovery_recommender import recommend_discovery_topics
 from .discovery_editor import build_review_page
 from .content import generate_topics, generate_script
 from .tts import synthesize
@@ -199,6 +200,41 @@ def cmd_discover_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_discover_recommend(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    source_json = _path(args.input_json)
+    source_md = _path(args.input_md)
+    out = _path(args.out)
+    report = recommend_discovery_topics(
+        settings,
+        source_json,
+        source_md,
+        out,
+        limit=args.limit,
+        batch_size=args.batch_size,
+    )
+    print(f"Автоматических тем: {report['recommendation_count']}")
+    print(
+        f"Отобрано для LLM: {report['method']['candidate_count_analyzed']} "
+        f"из {report['method']['candidate_count_total']} уникальных видео"
+    )
+    print(
+        f"Предварительный отбор: {report['method']['preselection']['search_selected_unique_count']} "
+        f"из поисковых наборов + {report['method']['preselection']['chart_added_unique_count']} из RU-чарта"
+    )
+    print(f"Пакетов LLM: {report['method']['batch_count']} + финальное объединение + аудит KadrFarm")
+    print(
+        f"Допущено к производству: {report['farm_review']['approved_count']}; "
+        f"наблюдать: {report['farm_review']['watchlist_count']}; "
+        f"не подходит ферме: {report['farm_review']['not_suitable_count']}; "
+        f"отклонено по смысловой целостности: {report['farm_review']['coherence_rejected_count']}"
+    )
+    print(f"Результаты: {out / 'recommendations.json'} и {out / 'recommendations.md'}")
+    print(f"Исходные API Data обновить или удалить до: {report['source_refresh_or_delete_by_utc']}")
+    print("Новые запросы к YouTube API не выполнялись.")
+    return 0
+
+
 def cmd_discover_editor(args: argparse.Namespace) -> int:
     source = _path(args.input)
     out = _path(args.out)
@@ -368,6 +404,16 @@ def build_parser() -> argparse.ArgumentParser:
     da.add_argument("--out", default="output/discovery", help="Output directory for topics.json and topics.md")
     da.add_argument("--limit", type=int, default=20, help="Maximum videos in each list (1–100)")
     da.set_defaults(func=cmd_discover_analyze)
+    dr = sub.add_parser(
+        "discover-recommend",
+        help="Автоматически определить лучшие оригинальные темы по сохранённому Discovery",
+    )
+    dr.add_argument("--input-json", default="output/discovery/discovery.json", help="Исходный discovery.json schema 2.0")
+    dr.add_argument("--input-md", default="output/discovery/discovery.md", help="Парный человекочитаемый discovery.md")
+    dr.add_argument("--out", default="output/discovery", help="Каталог recommendations.json и recommendations.md")
+    dr.add_argument("--limit", type=int, default=10, help="Максимум рекомендаций (3–15)")
+    dr.add_argument("--batch-size", type=int, default=50, help="Число видео на один LLM-пакет (2–300; по умолчанию 50)")
+    dr.set_defaults(func=cmd_discover_recommend)
     de = sub.add_parser("discover-editor", help="Создать локальную HTML-панель ручного отбора всех видео Discovery")
     de.add_argument("--input", default="output/discovery/discovery.json", help="Исходный discovery.json schema 2.0")
     de.add_argument("--out", default="output/discovery", help="Каталог для editor.html")
