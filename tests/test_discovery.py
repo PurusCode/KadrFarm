@@ -224,3 +224,25 @@ def test_cleanup_keeps_unexpired_report(tmp_path):
     )
     assert purge_expired_discovery_output(tmp_path, now=_now()) is False
     assert (tmp_path / 'discovery.json').exists()
+
+
+
+def test_network_error_does_not_leak_api_key(monkeypatch):
+    import requests
+    from kadr_farm.discovery import _get
+
+    secret = "SECRET-YOUTUBE-API-KEY"
+
+    def failed_request(*args, **kwargs):
+        raise requests.exceptions.SSLError(
+            f"Connection failed with key={secret}"
+        )
+
+    monkeypatch.setattr(requests, "get", failed_request)
+
+    with pytest.raises(RuntimeError) as exc:
+        _get("search", {}, secret)
+
+    assert "SSL/TLS" in str(exc.value)
+    assert secret not in str(exc.value)
+    assert "googleapis.com" not in str(exc.value)

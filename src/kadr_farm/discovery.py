@@ -50,19 +50,44 @@ DEFAULT_SEARCH_CALL_BUDGET = DEFAULT_DAILY_CEILING
 CHART_REGIONS = ("RU", "US")
 
 
+
 def _get(path: str, params: dict[str, Any], api_key: str) -> dict[str, Any]:
-    response = requests.get(
-        f"{API}/{path}", params={**params, "key": api_key}, timeout=35
-    )
+    try:
+        response = requests.get(
+            f"{API}/{path}", params={**params, "key": api_key}, timeout=35
+        )
+    except requests.exceptions.Timeout:
+        raise RuntimeError(
+            f"YouTube API: превышено время ожидания ответа ({path}). "
+            "Проверьте соединение и повторите запуск позже."
+        ) from None
+    except requests.exceptions.SSLError:
+        raise RuntimeError(
+            f"YouTube API: ошибка SSL/TLS при подключении ({path}). "
+            "Проверьте HTTPS-соединение и повторите запуск позже."
+        ) from None
+    except requests.exceptions.ConnectionError:
+        raise RuntimeError(
+            f"YouTube API: не удалось установить соединение ({path}). "
+            "Проверьте интернет-соединение и доступность Google API."
+        ) from None
+    except requests.exceptions.RequestException as exc:
+        raise RuntimeError(
+            f"YouTube API: сетевая ошибка ({path}): {type(exc).__name__}."
+        ) from None
+
     if response.status_code >= 400:
-        # Do not include request URL: it contains the API key.
         raise RuntimeError(
             f"YouTube API {response.status_code} for {path}: {response.text[:700]}"
         )
+
     payload = response.json()
     if not isinstance(payload, dict):
-        raise RuntimeError(f"YouTube API returned an unexpected response for {path}.")
+        raise RuntimeError(
+            f"YouTube API returned an unexpected response for {path}."
+        )
     return payload
+
 
 
 def _rfc3339(value: dt.datetime) -> str:
