@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import os
 import subprocess
@@ -18,6 +19,44 @@ from typing import Any
 import numpy as np
 
 SAMPLE_RATE = 24_000
+_AUDIO_EXTENSIONS = {".wav", ".mp3", ".ogg", ".m4a"}
+log = logging.getLogger("kadr_farm.director_audio")
+
+
+def _contains_audio_files(directory: Path) -> bool:
+    return directory.is_dir() and any(
+        item.is_file() and item.suffix.lower() in _AUDIO_EXTENSIONS
+        for item in directory.iterdir()
+    )
+
+
+def _resolve_audio_pack_dir(env_name: str, root: Path, default_relative: str) -> Path:
+    """Resolve a configured pack; stale paths fall back to the project-local pack."""
+    root = Path(root).resolve()
+    default_dir = (root / default_relative).resolve()
+    raw = os.getenv(env_name, "").strip()
+    if raw:
+        configured = Path(os.path.expanduser(os.path.expandvars(raw)))
+        if not configured.is_absolute():
+            configured = root / configured
+        configured = configured.resolve()
+        if _contains_audio_files(configured):
+            return configured
+        if configured != default_dir and _contains_audio_files(default_dir):
+            log.warning(
+                "%s points to a missing/empty directory (%s); using project audio pack (%s)",
+                env_name, configured, default_dir,
+            )
+            return default_dir
+        return configured
+    return default_dir
+
+
+def _resolve_audio_cache_dir() -> Path:
+    root = Path(__file__).resolve().parents[2]
+    raw = os.getenv("KADR_AUDIO_CACHE", "").strip()
+    cache = Path(os.path.expanduser(os.path.expandvars(raw))) if raw else Path("data/audio/.cache")
+    return (cache if cache.is_absolute() else root / cache).resolve()
 
 
 def _read_wav(path: Path):
@@ -46,7 +85,7 @@ def _load_any_audio(path: Path) -> np.ndarray | None:
         return _read_wav(path)
     except Exception:
         pass
-    cache_root = Path(os.getenv("KADR_AUDIO_CACHE") or Path(__file__).resolve().parents[2] / "data/audio/.cache")
+    cache_root = _resolve_audio_cache_dir()
     cache_root.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(f"{path.resolve()}:{path.stat().st_mtime_ns}".encode()).hexdigest()[:16]
     cached = cache_root / f"{key}.wav"
@@ -182,8 +221,8 @@ def build_master_audio(
         raise ValueError("Нет аудиобитов")
 
     root = Path(__file__).resolve().parents[2]
-    music_dir = Path(os.getenv("KADR_MUSIC_DIR") or root / "data/audio/music")
-    sfx_dir = Path(os.getenv("KADR_SFX_DIR") or root / "data/audio/sfx")
+    music_dir = _resolve_audio_pack_dir("KADR_MUSIC_DIR", root, "data/audio/music")
+    sfx_dir = _resolve_audio_pack_dir("KADR_SFX_DIR", root, "data/audio/sfx")
     level = float(os.getenv("KADR_MUSIC_LEVEL", "0.16"))
     depth = float(os.getenv("KADR_DUCK_DEPTH", "0.75"))
 

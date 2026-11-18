@@ -34,71 +34,129 @@ from .director_audio import build_master_audio, SAMPLE_RATE
 from .director_assembler import assemble_director_video
 from .text_normalization import normalize_for_speech
 from .kokoro_engine import synthesize_kokoro
-from .pixabay_media import fetch_pixabay, PixabayError
+from .pixabay_media import fetch_pixabay, PixabayError, MAX_DOWNLOAD_CANDIDATES
 from .director_shots import plan_shots
 
 log = logging.getLogger("kadr_farm.production_director")
 
-DIRECTOR_SYSTEM = """Ты — главный режиссёр монтажа и моушн-дизайнер русскоязычного tech-канала.
+DIRECTOR_POLICY_VERSION = "semantic-media-2.0"
+
+DIRECTOR_SYSTEM = """Ты — главный режиссёр монтажа русскоязычного технологического видеоканала.
 Тебе дана готовая раскадровка с точными voice_text. Не переписывай и не сокращай речь.
-Раздели voice_text каждой сцены на 1–4 последовательных фрагмента spoken_text.
-Склейка spoken_text в исходном порядке должна в точности сохранить исходную речь.
+Раздели voice_text каждой сцены на последовательные точные фрагменты spoken_text.
+Объединение фрагментов в исходном порядке должно в точности сохранить voice_text.
 
-РИТМ: один beat должен звучать примерно 2–4 секунды. Длинные предложения дели
-на 2–3 бита со сменой визуального аргумента. Не дроби речь механически.
+ГЛАВНЫЙ РЕДАКТОРСКИЙ ПРИНЦИП — ОДНА МЫСЛЬ, ОДИН ОСНОВНОЙ ВИЗУАЛ:
+- Обычно одна законченная мысль должна сопровождаться одним beat и одним основным образом.
+- Не назначай фиксированную длительность 2–4 секунды и не дроби речь по таймеру.
+- Не создавай отдельный beat для каждого предложения, существительного, слова или пункта перечисления.
+- Запятая, пауза, смена формулировки и длина фразы сами по себе не требуют нового кадра.
+- Новый beat нужен, только когда меняется предмет объяснения, физическое действие,
+  состояние процесса, причинно-следственный этап или самостоятельный визуальный аргумент.
+- Несколько соседних фраз можно объединить в один beat, если они раскрывают одну мысль.
+- Более длинную мысль при необходимости разделит shot-планировщик, но только по реальной
+  смысловой смене. Не придумывай временные метки и не подгоняй изображение вместо речи.
 
-РАЗРЕШЕННЫЕ АДАПТЕРЫ — ТОЛЬКО ДВА:
-1) stock / pixabay: реальные фото или видео. Для каждого stock beat дай 2–4 конкретных
-английских search_queries (физические объекты/действия, без абстрактных метафор).
-Фото будет показано на весь экран с медленным зумом и короткой подписью.
-2) rendered / internal_renderer: локальная анимированная графика. Шаблоны:
-- visual_type "text" — кинетическая типографика: 1–3 короткие рубленые фразы в on_screen_text;
-- "diagram"/"scheme"/"chart" — пошаговая схема: on_screen_text = 3–4 этапа по 1–2 слова
-  (пример: ["Запрос","Токены","Ответ"]); если первый элемент — число ("8 ГБ"), шаблон крупной цифры;
-- "comparison" — два понятия в on_screen_text: ["Поисковик","Нейросеть"];
-- "quote" — короткая цитата (до 12 слов) и автор вторым элементом;
-- "joke"/"illustration" — один яркий тезис.
+ЗВУК — САМОСТОЯТЕЛЬНЫЙ КАНАЛ ОБЪЯСНЕНИЯ:
+Вся существенная информация, факты, цифры, выводы и причинные связи должны быть понятны
+из дикторской дорожки. Кадр усиливает и иллюстрирует речь, но не несёт единственную
+важную информацию и не заменяет объяснение диктора.
 
-ЗАПРЕЩЕНО: целые предложения в on_screen_text (максимум 3–4 слова на блок);
-manual, screencast strategy или generated; пустой on_screen_text для diagram/comparison.
-SFX создаются локально из CC0-пака: указывай короткие имена (whoosh, pop, ding, error).
-claims — только фактические утверждения. Для каждого beat укажи motion и transition_in
-(cut/fade/slide). Заполняй ВСЕ поля схемы. Верни по одному плану на каждый scene_id.
+ВЫБОР ФОТО, ВИДЕО И ГРАФИКИ ПО СМЫСЛУ:
+1) stock / pixabay:
+- Для конкретного статичного реального объекта, человека, устройства, места или обстановки
+  предпочитай visual_type="photo": компьютер, смартфон, серверная, рабочее место,
+  документы, человек за работой, офис, техника.
+- Для реального физического действия, где важно движение (печатает, листает, нажимает,
+  собирает, взаимодействует с устройством), предпочитай visual_type="video" или "broll".
+- Если фото лучше показывает предмет, не требуй видео только ради движения.
+- Для каждого stock beat укажи 2–4 конкретных английских search_queries с предметом,
+  действием и/или контекстом кадра. Строй их по смыслу всего spoken_text, а не по одному
+  случайному слову. Запросы должны описывать то, что реально может быть найдено на фото
+  или видео Pixabay.
+- Не используй абстрактные слова вроде "success", "optimization", "concept", "future",
+  "abstract", "technology" без конкретного физического объекта.
+2) rendered / internal_renderer:
+- Используй локальную анимированную графику для невидимых механизмов, логики,
+  причинно-следственных связей, токенизации, потоков данных, концептуальных сравнений
+  и последовательностей состояний.
+- Схема должна наглядно объяснять механизм, а не быть декоративной карточкой.
+- Для реальных предметов и действий не подменяй уместный stock абстрактной графикой.
 
-ПРАВИЛА ПОИСКА STOCK (критично):
-- search_queries строй из КОНКРЕТНЫХ существительных самого spoken_text в английском переводе:
-  "graphics card", "computer motherboard", "old laptop", "office desktop computer", "gaming computer".
-- ЗАПРЕЩЕНЫ абстрактные и маркетинговые слова: success, optimization, seo, concept, business,
-  technology, future, iron, abstract.
-- Если в речи нет физического объекта — выбирай rendered (diagram/text/comparison), а не stock.
-- Не более двух photo/video beat подряд; чередуй с rendered.
-- transition_in преимущественно "cut"; "fade" только на границах сцен.
-ПРАВИЛА on_screen_text для visual_type "text":
-- каждый элемент — законченный смысловой кусок из 2–4 слов ("Современные нейросети",
-  "Нужна видеокарта"), а НЕ одно слово-обрубок."""
+НЕ ИСПОЛЬЗУЙ КВОТЫ:
+- Не чередуй stock и rendered искусственно и не ограничивай число фото/видео подряд.
+- Не добавляй нерелевантные фото ради разнообразия или заданного процента.
+- Соответствие конкретной произносимой мысли важнее количества фото, видео и графики.
 
-CRITIC_SYSTEM = """Ты — независимый AI-редактор и технический режиссёр, не автор плана.
-Проверяй визуальное решение против точного voice_text каждого фрагмента. Критерии:
-1) relevance: кадр объясняет именно произносимую мысль;
-2) coverage: spoken_text без пропусков, повторов, перестановок и переписывания;
-3) feasibility: только Pixabay stock и локальный renderer; без manual/screencast/generated;
-4) clarity: конкретный кадр, читабельный русский текст, нет одинаковых карточек подряд;
-   on_screen_text — короткие надписи, не пересказ сцены;
-5) factual risk: нет выдуманных процентов, графиков без данных, псевдофактов;
-6) rhythm: beat длиннее ~6 секунд речи без смены визуала — замечание.
-Существенная проблема -> verdict=revise и конкретный revision_brief.
-relevance_score, feasibility_score, narration_coverage_score — целые 0..5; factual_risk обязателен.
-problems=[] и revision_brief="" при отсутствии замечаний. Ровно один review на scene_id."""
+ДОСТОВЕРНОСТЬ:
+- Не создавай фальшивые интерфейсы браузера, поисковика, чата, мессенджера, терминала,
+  панели приложения, сайта, документа, письма или отчёта.
+- Не выдумывай названия авторов и организаций, даты, URL, цитаты, логотипы, версии,
+  названия кнопок, результаты поиска, числа, проценты, метрики и другие фактические детали.
+- Реалистичный интерфейс или документ разрешён только при наличии точного проверенного
+  содержания в исходных материалах. Одного упоминания темы недостаточно.
+- Условную ситуацию можно иллюстрировать нейтральным подходящим stock-кадром, но нельзя
+  выдавать его за документальную запись конкретного события или доказательство факта.
+- Не создавай графики и числовые сравнения без исходных данных. Условная схема должна
+  быть явно концептуальной и не имитировать реальные измерения.
 
-REPAIR_SYSTEM = """Ты — режиссёр-исполнитель. Исправь планы только переданных сцен по замечаниям.
-Сохрани spoken_text как точные непрерывные фрагменты исходного voice_text, полностью и по порядку.
-Только stock/pixabay либо rendered/internal_renderer; никакого manual/screencast/generated.
-Не добавляй непроверенных чисел и фактов. Русские экранные подписи короткие (3–4 слова).
-Один beat ≈ 2–4 секунды речи. Верни полный DirectorBatch для всех переданных сцен."""
+ЭКРАННЫЙ ТЕКСТ:
+- on_screen_text — только короткая смысловая метка, ключевой термин или подпись к объекту.
+- Надпись должна уже присутствовать в речи либо быть точно подтверждена материалами проекта.
+- Не копируй на экран spoken_text, целое предложение или описание для художника.
+- Не показывай выдуманные имена, даты, URL, цифры, цитаты, результаты или интерфейсные поля.
+- Для схемы используй только реальные короткие подписи этапов; не придумывай данные.
+- visual_description — внутренняя инструкция движку и никогда не видимый текст.
+
+РАЗРЕШЁННЫЕ АДАПТЕРЫ — ТОЛЬКО ДВА:
+- stock / pixabay: реальные фото или видеоматериалы с конкретными search_queries.
+- rendered / internal_renderer: локальная оригинальная графика.
+Не возвращай manual, screencast strategy, generated или другие провайдеры.
+Для каждого beat заполни все поля схемы. Если claims/SFX/подписи отсутствуют —
+верни пустые списки; если music_cue отсутствует — пустую строку; gen_prompt — null.
+Не генерируй музыкальные мелодии и частые SFX: музыка подключается отдельным реальным
+файлом при сведении. Возвращай ровно один план на каждый переданный scene_id.
+"""
+
+CRITIC_SYSTEM = """Ты — независимый AI-редактор и технический режиссёр.
+Сравни каждый beat с точным spoken_text и editorial_intent. Проверяй:
+1) semantic_relevance: кадр иллюстрирует именно произносимую мысль;
+2) narration_coverage: текст полностью сохранён, без пропусков, повторов и перефразирования;
+3) media_choice: статичный реальный объект — подходящее фото; физическое действие —
+   подходящее видео; абстрактный механизм — объясняющая анимация/схема;
+4) audio_independence: всю существенную информацию можно понять только на слух;
+5) factual_integrity: нет выдуманных интерфейсов, имён, дат, URL, цифр, процентов, цитат,
+   логотипов и результатов;
+6) visual_clarity: короткие подписи не заменяют содержательный визуал и не копируют речь;
+7) editorial_rhythm: смена плана оправдана сменой мысли, действия или визуального аргумента.
+Не требуй смены кадра только из-за длительности фразы. Длинный beat допустим, когда одна
+мысль действительно удерживается одним сильным образом. Несколько очень коротких beats
+подряд без смысловой причины — замечание.
+Существенное несоответствие или выдуманная фактическая деталь -> verdict=revise
+с конкретным revision_brief. Эстетическое предпочтение само по себе не блокирует план.
+relevance_score, feasibility_score, narration_coverage_score — целые 0..5;
+factual_risk обязателен. problems=[] и revision_brief="" при отсутствии замечаний.
+Верни ровно один review на scene_id."""
+
+REPAIR_SYSTEM = """Ты — режиссёр-исполнитель. Исправь только переданные сцены по замечаниям критика.
+Сохрани spoken_text как точные непрерывные фрагменты исходного voice_text, полностью
+и в исходном порядке. Обычно одна законченная мысль остаётся в одном beat.
+Не дроби речь ради 2–4 секунд, отдельного предложения, запятой или смены слов.
+Выбирай фото для конкретных статичных объектов, видео для реальных физических действий,
+локальную объясняющую графику для абстрактных механизмов. Для каждого stock beat —
+2–4 конкретных английских search_queries. Не добавляй квоты и нерелевантные кадры.
+Не выдумывай интерфейсы, факты, цифры, имена, даты, URL, цитаты или метрики.
+Экранные подписи короткие и уже произнесённые/подтверждённые. Только stock/pixabay
+либо rendered/internal_renderer. Верни полный DirectorBatch для всех переданных scene_id."""
 
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _director_plan_fingerprint(scenes: list[dict[str, Any]]) -> str:
+    payload = {"scenes": scenes, "director_policy_version": DIRECTOR_POLICY_VERSION}
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 def _atomic_json(path: Path, payload: Any) -> None:
@@ -118,12 +176,13 @@ def _check_exact_coverage(plan: dict[str, Any], scene: dict[str, Any]) -> None:
 
 def _make_director_plan(settings, scenes, batch_size, out_path):
     progress_path = out_path.with_suffix(".progress.json")
-    source_fp = hashlib.sha256(json.dumps(scenes, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    source_fp = _director_plan_fingerprint(scenes)
     completed = {}
     if progress_path.exists():
         saved = read_json(progress_path)
         if saved.get("source_sha256") != source_fp:
-            raise ValueError("Director checkpoint belongs to different input; choose a new output directory")
+            log.warning("Discarding director checkpoint created under a different narration or editorial policy")
+            saved = {}
         completed = saved.get("completed", {})
     pending = [s for s in scenes if s["id"] not in completed]
     for offset in range(0, len(pending), batch_size):
@@ -268,41 +327,193 @@ def _validate_pixabay_asset(settings, asset, kind):
         return False, f"video_probe_failed_{type(exc).__name__}"
 
 
-def _asset_for_beat(settings, scene, beat, visuals_dir, warnings, index, duration):
-    strategy = beat["asset_strategy"]
+def _asset_for_beat(settings, scene, beat, visuals_dir, warnings, index, duration,
+                    used_source_urls=None):
+    """Select a narration-relevant asset; approved stock is never silently replaced."""
+    strategy = str(beat.get("asset_strategy") or "").strip().lower()
+    used_source_urls = used_source_urls if used_source_urls is not None else set()
+
     if strategy == "stock":
-        kind = "video" if beat["visual_type"] in ("broll", "video") else "photo"
-        for query in beat.get("search_queries", [])[:3]:
-            try:
-                asset = fetch_pixabay(settings, query, kind, visuals_dir)
-            except PixabayError as exc:
-                warnings.append(f"{scene['id']}: Pixabay {query!r}: {exc}")
-                asset = None
-            if asset:
-                valid, check_note = _validate_pixabay_asset(settings, asset, kind)
-                if not valid:
-                    warnings.append(f"{scene['id']}: Pixabay asset rejected ({check_note}); trying next query")
-                    continue
-                p = Path(asset["path"])
-                asset.update({"sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
-                              "query": query, "asset_check": check_note})
-                if kind == "photo":
-                    # Фото -> анимированное видео с Ken Burns и подписью, точно под бит.
-                    beat_data = dict(beat)
-                    beat_data["visual_type"] = "photo"
-                    beat_data["image_path"] = str(p.resolve())
-                    video_file = visuals_dir / f"{scene['id']}_{index:02d}_photo.mp4"
-                    render_html_video(beat_data, duration=duration, output_path=video_file)
-                    asset.update({"path": str(video_file.resolve()), "media_type": "video",
-                                  "overlay_path": None, "template_id": "html_photo_kenburns",
-                                  "visual_family": "warm"})
-                    return asset
-                if beat.get("on_screen_text"):
-                    overlay = render_stock_overlay(
-                        beat["on_screen_text"], visuals_dir / f"{scene['id']}_{index:02d}_overlay.png")
-                    asset["overlay_path"] = str(overlay.resolve())
-                return asset
-        warnings.append(f"{scene['id']}: Pixabay не дал подходящий материал; fallback=internal_renderer")
+        requested_kind = (
+            "video"
+            if beat.get("visual_type") in ("broll", "video")
+            else "photo"
+        )
+
+        raw_queries = beat.get("search_queries") or []
+        if isinstance(raw_queries, str):
+            raw_queries = [raw_queries]
+
+        queries = [
+            str(q).strip()
+            for q in raw_queries[:4]
+            if str(q).strip()
+        ]
+
+        errors = []
+        rate_limited = False
+
+        # One candidate budget is shared by video and photo fallback.
+        download_budget = {
+            "limit": MAX_DOWNLOAD_CANDIDATES,
+            "used": 0,
+        }
+
+        # Include previously used sources and candidates rejected for this beat.
+        excluded_for_beat = set(used_source_urls)
+
+        def find_valid_candidate(kind):
+            while download_budget["used"] < download_budget["limit"]:
+                before = download_budget["used"]
+
+                try:
+                    candidate = fetch_pixabay(
+                        settings,
+                        queries,
+                        kind,
+                        visuals_dir,
+                        exclude_source_urls=excluded_for_beat,
+                        download_budget=download_budget,
+                    )
+                except PixabayError as exc:
+                    errors.append(f"{kind}: {exc}")
+                    warnings.append(f"{scene['id']}: Pixabay {kind}: {exc}")
+                    return None, None, bool(exc.is_rate_limited)
+
+                if candidate is None:
+                    return None, None, False
+
+                # Defensive accounting for adapters or test doubles that do
+                # not mutate the shared budget themselves.
+                if download_budget["used"] == before:
+                    download_budget["used"] += 1
+
+                valid, check_note = _validate_pixabay_asset(
+                    settings, candidate, kind
+                )
+
+                if valid:
+                    return candidate, check_note, False
+
+                errors.append(
+                    f"{kind}: selected candidate rejected: {check_note}"
+                )
+                warnings.append(
+                    f"{scene['id']}: Pixabay candidate rejected ({check_note})"
+                )
+
+                source_url = candidate.get("source_url")
+                if not source_url:
+                    return None, None, False
+
+                excluded_for_beat.add(source_url)
+
+            return None, None, False
+
+        asset, check_note, rate_limited = find_valid_candidate(requested_kind)
+
+        selected_kind = requested_kind
+        selection_fallback = None
+        fallback_reason = None
+
+        if asset is None and requested_kind == "video" and not rate_limited:
+            asset, check_note, photo_rate_limited = find_valid_candidate("photo")
+            rate_limited = rate_limited or photo_rate_limited
+
+            if asset is not None:
+                selected_kind = "photo"
+                selection_fallback = "video_to_photo"
+                fallback_reason = "no_usable_video_candidate"
+
+        if asset is None:
+            failure_path = (
+                visuals_dir / f"{scene['id']}_{index:02d}_asset_failure.json"
+            )
+            failure_path.parent.mkdir(parents=True, exist_ok=True)
+
+            failure = {
+                "status": "manual_review_required",
+                "scene_id": scene["id"],
+                "beat_index": index,
+                "shot_id": beat.get("shot_id"),
+                "source_beat_id": beat.get("source_beat_id"),
+                "spoken_text": beat.get("spoken_text", ""),
+                "requested_media_type": requested_kind,
+                "search_queries": queries,
+                "excluded_source_urls": sorted(used_source_urls),
+                "rejected_source_urls": sorted(
+                    excluded_for_beat - set(used_source_urls)
+                ),
+                "download_candidates_tried": download_budget["used"],
+                "download_candidates_limit": download_budget["limit"],
+                "errors": errors,
+                "rate_limited": rate_limited,
+                "policy": (
+                    "approved stock is never silently replaced by generated graphics"
+                ),
+            }
+
+            failure_path.write_text(
+                json.dumps(failure, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            warnings.append(
+                f"{scene['id']}: suitable Pixabay {requested_kind} not found; "
+                "manual review required"
+            )
+
+            raise RuntimeError(
+                f"{scene['id']}/b{index:02d}: "
+                f"\u0410\u0432\u0442\u043e\u0437\u0430\u043c\u0435\u043d\u0430 "
+                f"\u0433\u0440\u0430\u0444\u0438\u043a\u043e\u0439 "
+                f"\u0437\u0430\u043f\u0440\u0435\u0449\u0435\u043d\u0430. "
+                f"Manual review report: {failure_path}"
+            )
+
+        original_path = Path(asset["path"])
+        source_sha256 = hashlib.sha256(original_path.read_bytes()).hexdigest()
+        source_url = asset.get("source_url")
+        if source_url:
+            used_source_urls.add(source_url)
+        asset.update({
+            "sha256": source_sha256,
+            "source_sha256": source_sha256,
+            "source_asset_path": str(original_path.resolve()),
+            "asset_check": check_note,
+            "requested_media_type": requested_kind,
+            "selection_fallback": selection_fallback,
+            "fallback_reason": fallback_reason,
+            "beat_download_candidates_tried": download_budget["used"],
+            "beat_download_candidates_limit": download_budget["limit"],
+        })
+
+        if selected_kind == "photo":
+            beat_data = dict(beat)
+            beat_data["visual_type"] = "photo"
+            beat_data["image_path"] = str(original_path.resolve())
+            video_file = visuals_dir / f"{scene['id']}_{index:02d}_photo.mp4"
+            render_html_video(beat_data, duration=duration, output_path=video_file)
+            rendered_sha256 = hashlib.sha256(video_file.read_bytes()).hexdigest()
+            asset.update({
+                "path": str(video_file.resolve()),
+                "media_type": "video",
+                "sha256": rendered_sha256,
+                "rendered_sha256": rendered_sha256,
+                "overlay_path": None,
+                "template_id": "html_photo_kenburns",
+                "visual_family": "photo_stock",
+            })
+            return asset
+
+        if beat.get("on_screen_text"):
+            overlay = render_stock_overlay(
+                beat["on_screen_text"], visuals_dir / f"{scene['id']}_{index:02d}_overlay.png")
+            asset["overlay_path"] = str(overlay.resolve())
+        return asset
+
+    if strategy != "rendered":
+        raise ValueError(f"{scene['id']}/b{index:02d}: unsupported asset_strategy={strategy!r}")
 
     beat_data = dict(beat)
     beat_data["scene_meaning"] = scene.get("meaning", "")
@@ -312,9 +523,10 @@ def _asset_for_beat(settings, scene, beat, visuals_dir, warnings, index, duratio
         "path": str(video_file.resolve()), "media_type": "video",
         "source": "HTML/CSS Renderer", "source_url": None, "creator": "Project renderer",
         "license_name": "Project original graphics", "rights_status": "project_generated",
-        "sha256": "html_video", "template_id": "html_css", "visual_family": "warm",
+        "sha256": hashlib.sha256(video_file.read_bytes()).hexdigest(),
+        "template_id": "html_css", "visual_family": "warm",
+        "requested_media_type": "rendered",
     }
-
 
 def _wav_duration(path: Path) -> float:
     with wave.open(str(path), "rb") as wf:
@@ -376,6 +588,7 @@ def _produce(settings, scenes, plans, out_dir, speed, pause_seconds, punchline_p
     audio_by = {x["id"]: x for x in audio_manifest["blocks"]}
 
     beats, warnings = [], []
+    used_source_urls: set[str] = set()
     cursor = 0.0
     for scene, plan, beat, block_id, bi in flat:
         row = audio_by.get(block_id)
@@ -387,7 +600,8 @@ def _produce(settings, scenes, plans, out_dir, speed, pause_seconds, punchline_p
             wav = _padded_wav(wav, extra, audio_dir / "padded")
         duration = _wav_duration(wav)
         # Визуал рендерится ПОСЛЕ измерения речи и ровно под её длительность.
-        asset = _asset_for_beat(settings, scene, beat, visuals_dir, warnings, bi, duration)
+        asset = _asset_for_beat(settings, scene, beat, visuals_dir, warnings, bi, duration,
+                                 used_source_urls=used_source_urls)
         beats.append({
             "scene_id": scene["id"], "beat_id": f"b{bi:02d}",
             "spoken_text": beat["spoken_text"], "audio_path": str(wav.resolve()),
@@ -397,6 +611,21 @@ def _produce(settings, scenes, plans, out_dir, speed, pause_seconds, punchline_p
             "creator": asset.get("creator"), "license_name": asset.get("license_name"),
             "sha256": asset.get("sha256"),
             "asset_check": asset.get("asset_check", "local_renderer_video_created"),
+            "asset_query": asset.get("query"),
+            "candidate_count": asset.get("candidate_count"),
+            "selection_score": asset.get("selection_score"),
+            "selected_tags": asset.get("selected_tags"),
+            "selected_resolution": asset.get("selected_resolution"),
+            "pixabay_type": asset.get("pixabay_type"),
+            "rights_status": asset.get("rights_status"),
+            "requested_media_type": asset.get("requested_media_type"),
+            "selection_fallback": asset.get("selection_fallback"),
+            "fallback_reason": asset.get("fallback_reason"),
+            "source_asset_path": asset.get("source_asset_path"),
+            "source_sha256": asset.get("source_sha256"),
+            "rendered_sha256": asset.get("rendered_sha256"),
+            "search_queries_checked": asset.get("search_queries_checked"),
+            "download_candidates_tried": asset.get("download_candidates_tried"),
             "duration_ratio": None, "motion": beat.get("motion", "static"),
             "transition_in": beat.get("transition_in", "cut"),
             "audio_sfx": [x.model_dump(mode="json") if hasattr(x, "model_dump") else x
@@ -508,22 +737,28 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
     _atomic_json(out_dir / "pilot_storyboard.json", source)
 
     plan_path = out_dir / "director_plan.json"
+    expected_fp = _director_plan_fingerprint(scenes)
+    reuse_plan = False
     if plan_path.exists():
         cached = read_json(plan_path)
-        plans = cached.get("plans", [])
-        expected_fp = hashlib.sha256(json.dumps(scenes, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-        if cached.get("source_sha256") and cached.get("source_sha256") != expected_fp:
-            raise ValueError("Existing director_plan.json belongs to changed narration; choose a fresh output directory")
-        if {x["scene_id"] for x in plans} != set(ids):
-            raise ValueError("Existing director_plan.json belongs to different scene set; choose a fresh output directory")
-        for p in plans:
-            _check_exact_coverage(p, next(s for s in scenes if s["id"] == p["scene_id"]))
-    else:
+        cached_plans = cached.get("plans", [])
+        cached_ids = {x.get("scene_id") for x in cached_plans}
+        if cached.get("source_sha256") == expected_fp and cached_ids == set(ids):
+            try:
+                for p in cached_plans:
+                    _check_exact_coverage(p, next(s for s in scenes if s["id"] == p["scene_id"]))
+                plans = cached_plans
+                reuse_plan = True
+            except (KeyError, ValueError):
+                log.warning("Cached director plan failed current validation; regenerating it")
+        else:
+            log.info("Cached director plan uses an older policy or different narration; regenerating it")
+    if not reuse_plan:
         plans = _make_director_plan(settings, scenes, batch_size, plan_path)
 
     review_path = out_dir / "director_review.json"
     plan_fp = hashlib.sha256(json.dumps(
-        {"scenes": scenes, "plans": plans}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        {"scenes": scenes, "plans": plans, "director_policy_version": DIRECTOR_POLICY_VERSION}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     cached_review = read_json(review_path) if review_path.exists() else None
     if cached_review and cached_review.get("plan_sha256") == plan_fp:
         review_history = cached_review.get("history", [])
@@ -540,11 +775,10 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
                 break
             plans = _repair(settings, scenes, plans, critique)
             _atomic_json(plan_path, {"plans": plans, "repaired": True, "round": round_no + 1,
-                                     "source_sha256": hashlib.sha256(
-                                         json.dumps(scenes, ensure_ascii=False, sort_keys=True).encode()).hexdigest()})
+                                     "source_sha256": _director_plan_fingerprint(scenes)})
         unresolved = [x for x in critique["reviews"] if _is_bad(x)]
         plan_fp = hashlib.sha256(json.dumps(
-            {"scenes": scenes, "plans": plans}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            {"scenes": scenes, "plans": plans, "director_policy_version": DIRECTOR_POLICY_VERSION}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         _atomic_json(review_path, {
             "history": review_history, "unresolved": unresolved,
             "plan_sha256": plan_fp,
@@ -558,8 +792,7 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
     _atomic_json(plan_path, {"plans": plans,
                              "status": "accepted_with_warnings" if unresolved else "accepted_by_ai_critic",
                              "scene_count": len(plans),
-                             "source_sha256": hashlib.sha256(
-                                 json.dumps(scenes, ensure_ascii=False, sort_keys=True).encode()).hexdigest()})
+                             "source_sha256": _director_plan_fingerprint(scenes)})
 
     shot_plan_path = out_dir / "shot_plan.json"
     shot_result = plan_shots(settings, scenes, plans, shot_plan_path, batch_size=batch_size)
@@ -603,7 +836,10 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
         timeline_beats.append({
             **{k: b.get(k) for k in ("scene_id", "beat_id", "spoken_text", "audio_path",
                                       "audio_duration_sec", "visual_path", "media_type", "source",
-                                      "source_url", "creator", "license_name", "sha256", "motion",
+                                      "source_url", "creator", "license_name", "sha256", "asset_query", "candidate_count",
+                                      "selection_score", "selected_tags", "selected_resolution",
+                                      "requested_media_type", "selection_fallback", "source_asset_path",
+                                      "source_sha256", "motion",
                                       "transition_in", "visual_type", "template_id", "visual_family")},
             "start_sec": slot["start_sec"], "voice_end_sec": slot["voice_end_sec"], "end_sec": slot["end_sec"],
         })

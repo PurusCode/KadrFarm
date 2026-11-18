@@ -42,36 +42,43 @@ class ShotPlanBatch(BaseModel):
     scenes: list[SceneShotPlan] = Field(min_length=1)
 
 
+SHOT_POLICY_VERSION = "semantic-shot-inheritance-2.0"
+
 SYSTEM_PROMPT = """Ты — монтажёр-режиссёр, создающий shot-level монтажный план.
-На входе уже утверждённые режиссёром сцены и речевые beats. Разбей каждый исходный beat
-на 1–4 самостоятельных визуальных shot только там, где есть реальная смена действия,
-объекта, масштаба или визуального аргумента. Не дроби речь механически на равные интервалы.
-Если один сильный кадр может удерживать мысль, оставь один shot.
+На входе утверждённые главным режиссёром сцены и beats. Разбей каждый source beat
+на 1–4 самостоятельных визуальных shot только при реальной смене действия, объекта,
+состояния или визуального аргумента. По умолчанию оставь ОДИН shot на source beat.
 
-КРИТИЧЕСКОЕ СОХРАНЕНИЕ РЕЧИ:
-- Для каждого source_beat_id склей spoken_text всех его shots обычными пробелами.
-  Результат должен дословно совпадать с исходным source beat, включая слова и пунктуацию.
-- Каждый spoken_text — непрерывный фрагмент исходного текста. Никаких пересказов,
-  исправлений, пропусков, повторов, перестановок.
-- Не меняй scene_id и source_beat_id; shot_id должен иметь вид
-  <source_beat_id>_s01, <source_beat_id>_s02 и т.д.
-- Не назначай таймкоды и длительности. Их рассчитает система по реальным WAV.
-- Один shot должен соответствовать одному ясному визуальному действию или состоянию.
-  Не дроби предложение только ради частой смены кадров.
-- Для реального действия предпочитай stock/video; для абстрактной причинно-следственной
-  связи — локальную графику. Избегай статичных карточек, если мысль можно показать
-  последовательностью действий, объектов или состояний.
-- Используй только стратегии и типы, допустимые исходной схемой. Не придумывай новые.
-- Не добавляй новые факты, цифры, статистику, надписи или утверждения.
-- cut_reason кратко объясняет, почему здесь нужен отдельный монтажный план.
-- visual_description — внутренняя инструкция движку, а не видимый текст.
-  on_screen_text — только короткая надпись для зрителя.
+СОХРАНЕНИЕ РЕЧИ:
+- Для каждого source_beat_id склей spoken_text shots обычными пробелами.
+  Результат должен точно совпадать с исходным source beat, включая пунктуацию и порядок.
+- Каждый spoken_text — точный непрерывный фрагмент оригинальной речи.
+  Никаких пересказов, пропусков, перестановок, исправлений и повторов.
+- Не меняй scene_id/source_beat_id. shot_id: <source_beat_id>_s01, _s02 и т.д.
+- Не назначай timestamps или длительности: их рассчитает система по фактическим WAV.
 
-КОНТРАКТ ОТВЕТА (строго):
-- Верни РОВНО ОДИН объект SceneShotPlan на каждую входную сцену.
-- Список scenes должен содержать те же scene_id, что на входе, без дубликатов,
-  без дополнительных и без пропущенных. Несколько планов для одной сцены ЗАПРЕЩЕНЫ.
-- Все shots одной сцены находятся внутри её единственного объекта SceneShotPlan."""
+СМЫСЛОВЫЕ ПЕРЕХОДЫ:
+- Деление допустимо, когда речь описывает несколько самостоятельных действий/состояний
+  либо действительно меняется визуальный аргумент и каждому нужен другой кадр.
+- Запятая, пауза, длина предложения, перечисление, риторический вопрос, желание динамики
+  или предполагаемая длительность фразы сами по себе не причина для cut.
+- Если один сильный визуальный образ может сопровождать всю мысль, оставь один shot.
+- Для реального физического действия предпочитай stock/video; для абстрактной причинной
+  связи — объясняющую локальную графику.
+
+НАСЛЕДОВАНИЕ УТВЕРЖДЁННОГО ВИЗУАЛЬНОГО РЕШЕНИЯ:
+- Для каждого shot сохрани visual_type, asset_strategy и provider_id исходного source beat
+  без изменений. Shot-планировщик делит монтаж, но не переизобретает выбор источника.
+- Назначенное фото остаётся photo/stock/pixabay; video/broll остаётся stock/pixabay;
+  rendered остаётся rendered/internal_renderer.
+- Не дроби одну фотографию на несколько кадров без реальной смены визуального аргумента.
+- Не добавляй новые факты, цифры, надписи или утверждения. Не создавай фальшивые интерфейсы,
+  документы, URL, даты, логотипы, цитаты, имена, названия кнопок или результаты.
+- on_screen_text — короткая подтверждённая подпись, visual_description — только инструкция движку.
+- cut_reason должен назвать конкретное изменение действия, объекта, состояния или аргумента.
+  «Для динамики», «для разнообразия» и «новая фраза» недостаточны.
+Верни ровно один SceneShotPlan для каждой входной сцены, без пропусков и дубликатов.
+Все shots одной сцены находятся внутри её единственного объекта SceneShotPlan."""
 
 REPAIR_SUFFIX = """
 ПРЕДЫДУЩИЙ ОТВЕТ ОТКЛОНЁН ВАЛИДАТОРОМ. Исправь только структуру ответа:
@@ -99,6 +106,7 @@ def _check_group_coverage(
         f"b{i:02d}": str(beat["spoken_text"])
         for i, beat in enumerate(source_beats, 1)
     }
+    source_by_id = {f"b{i:02d}": beat for i, beat in enumerate(source_beats, 1)}
     actual: dict[str, list[dict[str, Any]]] = {key: [] for key in expected}
     seen_ids: set[str] = set()
 
@@ -118,12 +126,19 @@ def _check_group_coverage(
             raise ValueError(f"{scene_id}/{source_id}: source beat has no shots")
         if len(rows) > 4:
             raise ValueError(f"{scene_id}/{source_id}: more than four shots for one source beat")
+        source_beat = source_by_id[source_id]
         for index, row in enumerate(rows, 1):
             expected_shot_id = f"{source_id}_s{index:02d}"
             if row["shot_id"] != expected_shot_id:
                 raise ValueError(
                     f"{scene_id}/{source_id}: expected {expected_shot_id}, got {row['shot_id']}"
                 )
+            for field in ("visual_type", "asset_strategy", "provider_id"):
+                if row.get(field) != source_beat.get(field):
+                    raise ValueError(
+                        f"{scene_id}/{source_id}: shot {row['shot_id']} must preserve "
+                        "visual_type/asset_strategy/provider_id from the approved source beat"
+                    )
         combined = " ".join(row["spoken_text"] for row in rows)
         if _norm(combined) != _norm(source_text):
             raise ValueError(
@@ -200,7 +215,8 @@ def plan_shots(
 
     source_fingerprint = hashlib.sha256(
         json.dumps(
-            {"scenes": scenes, "plans": director_plans},
+            {"scenes": scenes, "plans": director_plans,
+             "shot_policy_version": SHOT_POLICY_VERSION},
             ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()
@@ -221,10 +237,15 @@ def plan_shots(
         unknown = set(cached) - set(scene_by_id)
         if unknown:
             raise ValueError(f"Shot planner checkpoint contains unknown scenes: {sorted(unknown)}")
-        for scene_id, rows in cached.items():
-            completed[scene_id] = _validate_cached_scene(
-                scene_id, plan_by_id[scene_id]["beats"], rows)
-        fallback_scenes = list(checkpoint.get("fallback_scenes", []))
+        try:
+            for scene_id, rows in cached.items():
+                completed[scene_id] = _validate_cached_scene(
+                    scene_id, plan_by_id[scene_id]["beats"], rows)
+            fallback_scenes = list(checkpoint.get("fallback_scenes", []))
+        except ValueError as exc:
+            log.warning("Discarding shot-plan checkpoint that violates current speech/source inheritance: %s", exc)
+            completed = {}
+            fallback_scenes = []
 
     router = StructuredLLMRouter(settings)
     pending = [scene for scene in scenes if scene["id"] not in completed]
@@ -298,6 +319,7 @@ def plan_shots(
         "schema_version": "2.0-shot-edl",
         "status": "validated",
         "source_sha256": source_fingerprint,
+        "policy_version": SHOT_POLICY_VERSION,
         "scene_count": len(flattened),
         "source_beat_count": sum(len(plan["beats"]) for plan in director_plans),
         "shot_count": sum(len(plan["beats"]) for plan in flattened),

@@ -71,3 +71,22 @@ def test_shot_coverage_rejects_more_than_four_shots_per_beat():
              for i, text in enumerate(["А.", "Б.", "В.", "Г.", "Д."], 1)],
             "s_001",
         )
+
+
+def test_shot_coverage_rejects_changed_visual_source_strategy():
+    source = [{
+        "spoken_text": "Человек печатает на ноутбуке.",
+        "visual_type": "video",
+        "asset_strategy": "stock",
+        "provider_id": "pixabay",
+    }]
+    altered = [{
+        "shot_id": "b01_s01",
+        "source_beat_id": "b01",
+        "spoken_text": "Человек печатает на ноутбуке.",
+        "visual_type": "illustration",
+        "asset_strategy": "rendered",
+        "provider_id": "internal_renderer",
+    }]
+    with pytest.raises(ValueError, match="must preserve"):
+        _check_group_coverage(source, altered, "s_001")

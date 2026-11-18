@@ -133,13 +133,21 @@ def test_media_production_synthesizes_each_exact_phrase_and_renders_fallback(tmp
          "gen_prompt": None, "search_queries": [], "on_screen_text": ["АРХИВ", "МОДЕЛЬ"],
          "motion": "slow_zoom", "transition_in": "cut", "audio_sfx": []}
     ]}]
-    beats, report = director._produce(settings, scenes, plans, tmp_path / "production", 0.9)
+    beats, report = director._produce(
+        settings,
+        scenes,
+        plans,
+        tmp_path / "production",
+        0.9,
+        pause_seconds=0.22,
+        punchline_pause=0.18,
+    )
     assert report["status"] == "complete"
     assert len(beats) == 1
     assert beats[0]["spoken_text"] == "Первое точное предложение."
     assert Path(beats[0]["audio_path"]).is_file()
     assert Path(beats[0]["visual_path"]).is_file()
-    assert beats[0]["source"] == "AI Video Factory local renderer"
+    assert beats[0]["source"] == "HTML/CSS Renderer"
 
 
 def test_source_audit_never_marks_claim_verified(monkeypatch, tmp_path):
@@ -221,7 +229,7 @@ def test_render_never_exposes_visual_description_as_visible_copy(tmp_path):
     assert description not in metadata["visible_text"]
     assert all("макет" not in text.lower() and "появляется" not in text.lower()
                for text in metadata["visible_text"])
-    assert metadata["template_id"] == "simulated_interface"
+    assert metadata["template_id"] == "illustration_warning"
 
 
 def test_instruction_like_display_labels_are_filtered():

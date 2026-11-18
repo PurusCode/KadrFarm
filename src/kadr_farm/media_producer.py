@@ -26,50 +26,140 @@ def _visual_job(settings: Any, scene: dict[str, Any], spec: dict[str, Any],
                 output_dir: Path, warnings: list[str], index: int) -> dict[str, Any]:
     strategy = spec.get("asset_strategy", scene.get("asset_strategy"))
     visual_type = spec.get("visual_type", scene.get("visual_type"))
-    queries = spec.get("search_queries", scene.get("search_queries", []))
+
+    raw_queries = (
+        spec.get("search_queries")
+        or scene.get("search_queries")
+        or []
+    )
+
+    if isinstance(raw_queries, str):
+        raw_queries = [raw_queries]
+
+    queries = [
+        str(q).strip()
+        for q in raw_queries
+        if str(q).strip()
+    ][:4]
+
     target = output_dir / "visuals"
+
     if strategy == "stock":
-        query = (queries or [scene.get("visual_description", "")])[0]
         kind = "video" if visual_type in ("video", "broll") else "photo"
+        failure_exc = None
+        errors = []
+
         try:
-            asset = fetch_pixabay(settings, str(query), kind, target)
+            # Pass all planned search phrases, not just the first one.
+            asset = fetch_pixabay(settings, queries, kind, target)
         except PixabayError as exc:
-            warnings.append(f"{scene['id']}: {exc}; использован внутренний renderer")
             asset = None
-        if asset:
-            path = Path(asset["path"])
-            asset["sha256"] = _sha256(path)
-            asset["duration_ratio"] = float(spec.get("sub_duration_ratio", 1.0))
-            return asset
-        warnings.append(f"{scene['id']}: Pixabay не вернул {kind}; использован внутренний renderer")
+            failure_exc = exc
+            errors.append(str(exc))
+
+        if not asset:
+            if not errors:
+                errors.append(
+                    "Pixabay returned no suitable candidate or no API key was configured."
+                )
+
+            failure_path = (
+                target / f"{scene['id']}_{index:02d}_asset_failure.json"
+            )
+            failure_path.parent.mkdir(parents=True, exist_ok=True)
+
+            failure = {
+                "status": "manual_review_required",
+                "scene_id": scene["id"],
+                "beat_index": index,
+                "spoken_text": spec.get(
+                    "spoken_text",
+                    scene.get("voice_text", ""),
+                ),
+                "requested_media_type": kind,
+                "search_queries": queries,
+                "errors": errors,
+                "rate_limited": bool(
+                    failure_exc is not None and failure_exc.is_rate_limited
+                ),
+                "policy": (
+                    "approved stock is never silently replaced by generated graphics"
+                ),
+            }
+
+            failure_path.write_text(
+                json.dumps(failure, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            warnings.append(
+                f"{scene['id']}: Pixabay stock unavailable; manual review required"
+            )
+
+            raise RuntimeError(
+                f"{scene['id']}: stock {kind} unavailable; "
+                f"manual review required. Report: {failure_path}"
+            ) from failure_exc
+
+        path = Path(asset["path"])
+        asset["sha256"] = _sha256(path)
+        asset["duration_ratio"] = float(
+            spec.get("sub_duration_ratio", 1.0)
+        )
+        return asset
+
     elif strategy == "generated":
         raise RuntimeError(
-            f"{scene['id']}: generated provider не подключён. Платная генерация не выполняется."
+            f"{scene['id']}: generated provider is not connected. "
+            "Paid generation is not performed."
         )
+
     elif strategy == "manual":
         raise RuntimeError(
-            f"{scene['id']}: требуется ручной визуал. Добавьте файл в media_refs до produce."
+            f"{scene['id']}: manual visual input is required before production."
         )
+
     elif strategy == "screencast":
         raise RuntimeError(
-            f"{scene['id']}: screencast должен быть предоставлен оператором вручную."
+            f"{scene['id']}: screencast must be supplied by the operator."
+        )
+
+    elif strategy == "rendered":
+        pass
+    else:
+        raise RuntimeError(
+            f"{scene['id']}: unsupported asset_strategy={strategy!r}"
         )
 
     rendered_scene = dict(scene)
     rendered_scene["visual_type"] = visual_type
-    rendered_scene["visual_description"] = spec.get("visual_description", scene.get("visual_description", ""))
-    rendered_scene["on_screen_text"] = spec.get("on_screen_text", scene.get("on_screen_text", []))
+    rendered_scene["visual_description"] = spec.get(
+        "visual_description",
+        scene.get("visual_description", ""),
+    )
+    rendered_scene["on_screen_text"] = spec.get(
+        "on_screen_text",
+        scene.get("on_screen_text", []),
+    )
     rendered_scene["gen_prompt"] = spec.get("gen_prompt")
     rendered_scene["chart_data"] = scene.get("chart_data")
-    path = render_scene_visual(rendered_scene, target / f"{scene['id']}_{index:02d}.png")
-    return {
-        "path": str(path.resolve()), "media_type": "image",
-        "sha256": _sha256(path), "source": "Internal renderer",
-        "source_url": None, "creator": None, "license_name": "Project original rendering",
-        "rights_status": "project_generated", "duration_ratio":
-            float(spec.get("sub_duration_ratio", 1.0)),
-    }
 
+    path = render_scene_visual(
+        rendered_scene,
+        target / f"{scene['id']}_{index:02d}.png",
+    )
+
+    return {
+        "path": str(path.resolve()),
+        "media_type": "image",
+        "sha256": _sha256(path),
+        "source": "Internal renderer",
+        "source_url": None,
+        "creator": None,
+        "license_name": "Project original rendering",
+        "rights_status": "project_generated",
+        "duration_ratio": float(spec.get("sub_duration_ratio", 1.0)),
+    }
 
 def produce_media(settings: Any, storyboard_path: Path, output_dir: Path,
                   *, speed: float = 0.9) -> dict[str, Any]:
