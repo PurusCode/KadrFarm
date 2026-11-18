@@ -173,31 +173,43 @@ def _fetch_video_details(video_ids: list[str], api_key: str) -> tuple[dict[str, 
     return details, calls
 
 
-def _load_popular_charts(api_key: str) -> tuple[dict[str, Any], int]:
-    """Fetch YouTube's own mostPopular chart for two explicit regions.
+def _load_popular_charts(
+    api_key: str,
+    regions: tuple[str, ...] = CHART_REGIONS,
+) -> tuple[dict[str, Any], int]:
+    """Fetch YouTube's own mostPopular chart for selected regions.
 
-    The chart is a supplemental signal only. Official docs describe it as including
-    trending music, movies and gaming videos; it is not an all-topic global chart.
+    The chart is supplemental only. It is not a full all-topic trending list.
     """
     charts: dict[str, Any] = {}
     calls = 0
-    for region in CHART_REGIONS:
+
+    for region in regions:
         payload = _get(
             "videos",
-            {"part": "snippet,statistics,contentDetails", "chart": "mostPopular",
-             "regionCode": region, "maxResults": 50},
+            {
+                "part": "snippet,statistics,contentDetails",
+                "chart": "mostPopular",
+                "regionCode": region,
+                "maxResults": 50,
+            },
             api_key,
         )
         calls += 1
+
         videos = []
         for item in payload.get("items", []):
             if isinstance(item, dict):
                 record = _video_record_from_detail(item)
                 if record:
                     videos.append(record)
-        charts[region] = {"region_code": region, "videos": videos}
-    return charts, calls
 
+        charts[region] = {
+            "region_code": region,
+            "videos": videos,
+        }
+
+    return charts, calls
 
 def _merge_candidates(
     sets: list[dict[str, Any]],
@@ -249,11 +261,30 @@ def _fmt(value: int | None) -> str:
 
 
 def _make_markdown(report: dict[str, Any]) -> str:
+    search_design = report["search_design"]
+    market_mode = search_design.get("market_mode", "both")
+
+    market_label = (
+        "только Россия"
+        if market_mode == "ru"
+        else "Россия и международная выдача"
+    )
+
+    market_notes = [
+        "- Российская выдача: `regionCode=RU`, языковой приоритет `ru`."
+    ]
+
+    if market_mode == "both":
+        market_notes.append(
+            "- Зарубежная выдача: без `regionCode`, с приоритетом английского языка; это не выборка всех стран."
+        )
+
     lines = [
         "# Ежедневный обзор популярных видео — YouTube",
         "",
         f"- Сформировано (UTC): `{report['generated_at_utc']}`",
         f"- Источник: {report['source']}",
+        f"- Режим рынка: **{market_label}**",
         f"- Уникальных видео в объединённом списке: **{report['candidate_count']}**",
         f"- Поисковых запросов: **{report['quota_usage']['search_list_calls']}**",
         "",
@@ -304,8 +335,7 @@ def _make_markdown(report: dict[str, Any]) -> str:
     lines += [
         "## Как читать отчёт и ограничения",
         "",
-        "- Российская выдача: `regionCode=RU`, языковой приоритет `ru`.",
-        "- Зарубежная выдача: `relevanceLanguage=en`, без `regionCode`; это международный поиск с приоритетом английского, а не выборка всех стран или только США.",
+        *market_notes,
         "- Периоды: последние 24 часа и 7 дней; для каждого набора отдельно выполняются `viewCount` и `date`.",
         "- `viewCount` — общее число просмотров; `date` — сортировка по дате публикации. Поиск не показывает скорость прироста просмотров.",
         "- Выдача YouTube по разным сортировкам и временным фильтрам может быть неполной; это выборки по запросам, не исчерпывающий рейтинг.",
@@ -314,7 +344,14 @@ def _make_markdown(report: dict[str, Any]) -> str:
         "- В отчёт включены сырые счётчики и названия из API. Их требуется обновить или удалить в течение 30 календарных дней.",
         "- Дневной локальный потолок `search.list` — 90 попыток на Pacific-день для основного Google Cloud Project; 10 вызовов оставляются в резерве от стандартного лимита 100.",
         "- Журнал квоты учитывает попытку до HTTP-запроса, включая неуспешные вызовы. Запросы из Cloud Console, другого компьютера или приложения нужно вручную внести через `discover-quota --external-search-calls N`.",
-        "- Стандартный поиск Stage 5.1: 10 направлений × 2 рынка × 2 окна × 2 порядка = 80 первых страниц; по умолчанию одна страница до 50 видео.",
+        (
+            f"- План поиска: {len(search_design['topic_streams'])} направлений × "
+            f"{len(search_design['markets'])} рынок(а) × "
+            f"{len(search_design['window_days'])} периода × "
+            f"{len(search_design['orders'])} сортировки = "
+            f"{search_design['planned_first_pages']} первых страниц; "
+            "по умолчанию одна страница до 50 видео."
+        ),
         "",
     ]
     return "\n".join(lines)
@@ -355,15 +392,21 @@ def discover_youtube(
     query: str | None = None,
     region: str = "RU",
     language: str = "ru",
+    market: str = "ru",
     max_results: int = DEFAULT_MAX_RESULTS,
     max_pages: int = DEFAULT_MAX_PAGES,
     search_call_budget: int = DEFAULT_SEARCH_CALL_BUDGET,
     now: dt.datetime | None = None,
 ) -> dict[str, Any]:
-    """Search both API orders and enforce a persistent project-wide local ceiling.
+    """Search configured YouTube markets and enforce the local quota ceiling.
 
-    Standard run: 10 streams × 2 markets × 2 windows × 2 orders = 80 first
-    pages. The default returns up to 50 results per page and does not paginate.
+    Default Russian-only run:
+    10 streams × 1 market × 2 windows × 2 orders = 40 first pages.
+
+    Optional both-markets run:
+    10 streams × 2 markets × 2 windows × 2 orders = 80 first pages.
+
+    The default returns up to 50 results per page and does not paginate.
     Extra pages are optional and use only the remaining daily allowance.
     """
     if not settings.youtube_api_key:
@@ -382,16 +425,50 @@ def discover_youtube(
 
     if query is not None and not str(query).strip():
         raise ValueError("Пользовательский поисковый запрос не должен быть пустым")
-    streams = ([{"id": "custom", "title": "Пользовательский запрос",
-                 "query_ru": query.strip(), "query_global": query.strip()}]
-               if query and query.strip() else list(TOPIC_STREAMS))
+    market_mode = str(market).strip().lower()
+
+    if market_mode not in {"ru", "both"}:
+        raise ValueError("market должен быть 'ru' или 'both'")
+
+    if market_mode == "ru" and region.upper().strip() != "RU":
+        raise ValueError("--market ru допускает только --region RU")
+
+    streams = (
+        [{
+            "id": "custom",
+            "title": "Пользовательский запрос",
+            "query_ru": query.strip(),
+            "query_global": query.strip(),
+        }]
+        if query and query.strip()
+        else list(TOPIC_STREAMS)
+    )
+
     markets = [
-        {"id": "ru", "region_code": region.upper().strip(),
-         "language": language.strip(), "query_key": "query_ru"},
-        {"id": "global", "region_code": None,
-         "language": "en", "query_key": "query_global"},
+        {
+            "id": "ru",
+            "region_code": "RU",
+            "language": language.strip(),
+            "query_key": "query_ru",
+        },
     ]
-    planned_first_pages = len(WINDOWS_DAYS) * len(markets) * len(streams) * len(SEARCH_ORDERS)
+
+    if market_mode == "both":
+        markets.append(
+            {
+                "id": "global",
+                "region_code": None,
+                "language": "en",
+                "query_key": "query_global",
+            }
+        )
+
+    planned_first_pages = (
+        len(WINDOWS_DAYS)
+        * len(markets)
+        * len(streams)
+        * len(SEARCH_ORDERS)
+    )
     if planned_first_pages > int(search_call_budget):
         raise ValueError(
             f"Лимит запуска {search_call_budget} меньше числа обязательных первых страниц "
@@ -522,9 +599,33 @@ def discover_youtube(
                 if rich:
                     result_set["videos"][index] = rich
 
-    charts, chart_calls = _load_popular_charts(settings.youtube_api_key)
+    chart_regions = ("RU",) if market_mode == "ru" else CHART_REGIONS
+
+    charts, chart_calls = _load_popular_charts(
+        settings.youtube_api_key,
+        regions=chart_regions,
+    )
     unique_candidates = _merge_candidates(search_sets, charts, details)
     quota_after = ledger.status(now=now)
+
+    report_notes = [
+        "Search-stream names identify preconfigured search requests; they are not automatically inferred video tags.",
+        "Each query is separately searched with API order=viewCount and order=date; the two selections are not merged into a custom score.",
+        "viewCount is total views, not view velocity; date is publication-date ordering, not a popularity measure.",
+        "The mostPopular chart is supplemental and not a full all-topic trending list.",
+        "Non-Authorized Data must be refreshed or deleted within 30 calendar days.",
+        "Quota ledger accounts local search.list attempts before HTTP and does not see other apps/computers unless reconciled manually.",
+    ]
+
+    if market_mode == "ru":
+        report_notes.append(
+            "Only the Russian regional search is enabled: regionCode=RU, "
+            "with the Russian language set as a relevance priority."
+        )
+    else:
+        report_notes.append(
+            "International search has no regionCode and uses English as relevanceLanguage priority, not as a language filter."
+        )
 
     report: dict[str, Any] = {
         "schema_version": "2.0",
@@ -532,10 +633,17 @@ def discover_youtube(
         "generated_at_utc": generated_at,
         "refresh_or_delete_by_utc": expires_at,
         "search_design": {
+            "market_mode": market_mode,
             "markets": [
-                {"id": "ru", "region_code": region.upper().strip(), "relevance_language": language.strip()},
-                {"id": "global", "region_code": None, "relevance_language": "en"},
+                {
+                    "id": item["id"],
+                    "region_code": item["region_code"],
+                    "relevance_language": item["language"],
+                }
+                for item in markets
             ],
+            "chart_regions": list(chart_regions),
+            "planned_first_pages": planned_first_pages,
             "topic_streams": streams,
             "window_days": list(WINDOWS_DAYS),
             # Backward-compatible legacy field; `orders` is authoritative for Stage 5.1.
@@ -564,15 +672,7 @@ def discover_youtube(
             "videos_list_quota_units": detail_calls + chart_calls,
             "note": "search.list uses its separate daily Search Queries bucket; the local application ceiling is 90 calls per America/Los_Angeles day, including externally reconciled usage.",
         },
-        "notes": [
-            "Search-stream names identify preconfigured search requests; they are not automatically inferred video tags.",
-            "Each query is separately searched with API order=viewCount and order=date; the two selections are not merged into a custom score.",
-            "viewCount is total views, not view velocity; date is publication-date ordering, not a popularity measure.",
-            "International search has no regionCode and uses English as relevanceLanguage priority, not as a language filter.",
-            "The mostPopular chart is supplemental and not a full all-topic trending list.",
-            "Non-Authorized Data must be refreshed or deleted within 30 calendar days.",
-            "Quota ledger accounts local search.list attempts before HTTP and does not see other apps/computers unless reconciled manually.",
-        ],
+        "notes": report_notes,
     }
     out_dir.mkdir(parents=True, exist_ok=True)
     write_json(out_dir / "discovery.json", report)

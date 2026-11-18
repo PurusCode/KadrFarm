@@ -72,61 +72,121 @@ def _now():
     return dt.datetime(2026, 11, 2, 12, 0, tzinfo=dt.timezone.utc)
 
 
-def test_default_discovery_searches_both_orders_with_80_first_pages(tmp_path, monkeypatch):
+def test_default_discovery_searches_russia_with_40_first_pages(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls))
     settings = _settings(data_dir=tmp_path / 'data')
     report = discover_youtube(settings, tmp_path / 'output', now=_now())
 
     search_calls = [c for c in calls if c[0] == 'search']
+
     assert len(TOPIC_STREAMS) == 10
     assert SEARCH_ORDERS == ('viewCount', 'date')
     assert DEFAULT_MAX_RESULTS == 50
     assert DEFAULT_MAX_PAGES == 1
-    assert len(search_calls) == 80
-    assert len(report['search_sets']) == 80
+
+    assert len(search_calls) == 40
+    assert len(report['search_sets']) == 40
+    assert {x['market'] for x in report['search_sets']} == {'ru'}
     assert {x['order'] for x in report['search_sets']} == {'viewCount', 'date'}
-    assert all(x['pages_fetched'] == 1 and x['has_more_pages'] for x in report['search_sets'])
+
+    assert all(x['pages_fetched'] == 1 for x in report['search_sets'])
+    assert all(x['has_more_pages'] for x in report['search_sets'])
     assert all(c[1]['maxResults'] == 50 for c in search_calls)
     assert all(c[1]['order'] in SEARCH_ORDERS for c in search_calls)
+    assert all(c[1].get('regionCode') == 'RU' for c in search_calls)
+    assert all(c[1]['relevanceLanguage'] == 'ru' for c in search_calls)
     assert all('pageToken' not in c[1] for c in search_calls)
 
-    ru = next(c[1] for c in search_calls if c[1].get('regionCode') == 'RU')
-    global_search = next(c[1] for c in search_calls if 'regionCode' not in c[1])
-    assert ru['relevanceLanguage'] == 'ru'
-    assert global_search['relevanceLanguage'] == 'en'
-
-    # Details were fetched in batches; chart remains a separate supplemental source.
     candidate = report['unique_candidates'][0]
     assert candidate['view_count'] == 12345
     assert candidate['like_count'] == 321
     assert candidate['duration'] == 'PT5M20S'
     assert isinstance(candidate['found_in'], list)
-    assert {'viewCount', 'date'} <= {x['order'] for x in candidate['found_in'] if x.get('stream_id') != 'youtube_most_popular_chart'}
-    assert all('query' in x for x in candidate['found_in'] if x.get('stream_id') != 'youtube_most_popular_chart')
+
+    assert {'viewCount', 'date'} <= {
+        x['order']
+        for x in candidate['found_in']
+        if x.get('stream_id') != 'youtube_most_popular_chart'
+    }
+
+    assert all(
+        'query' in x
+        for x in candidate['found_in']
+        if x.get('stream_id') != 'youtube_most_popular_chart'
+    )
+
     assert report['candidate_count'] == len(report['unique_candidates'])
+
+    assert set(report['most_popular_charts']) == {'RU'}
     assert len(report['most_popular_charts']['RU']['videos']) == 1
-    assert report['quota_usage']['search_list_calls'] == 80
-    assert report['quota_usage']['search_list_calls_remaining_today'] == 10
+
+    assert report['quota_usage']['search_list_calls'] == 40
+    assert report['quota_usage']['search_list_calls_remaining_today'] == 50
     assert report['quota_usage']['search_list_daily_accounting']['timezone'] == 'America/Los_Angeles'
+
+    assert report['search_design']['market_mode'] == 'ru'
+    assert len(report['search_design']['markets']) == 1
+    assert report['search_design']['chart_regions'] == ['RU']
+    assert report['search_design']['planned_first_pages'] == 40
+
     assert report['search_design']['orders'] == ['viewCount', 'date']
-    assert report['search_design']['order'] == 'viewCount'  # legacy schema 2.0 field
+    assert report['search_design']['order'] == 'viewCount'
     assert report['search_design']['search_call_budget'] == 90
     assert report['schema_version'] == '2.0'
 
-    saved = json.loads((tmp_path / 'output' / 'discovery.json').read_text(encoding='utf-8'))
+    saved = json.loads(
+        (tmp_path / 'output' / 'discovery.json').read_text(encoding='utf-8')
+    )
     assert saved['candidate_count'] == report['candidate_count']
+
     md = (tmp_path / 'output' / 'discovery.md').read_text(encoding='utf-8')
-    assert 'order=viewCount' in md and 'order=date' in md
+    assert 'order=viewCount' in md
+    assert 'order=date' in md
+    assert 'только Россия' in md
+    assert 'Зарубежная выдача' not in md
     assert 'скорость прироста' in md.lower()
 
+
+def test_both_markets_preserve_80_first_pages_and_two_charts(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        'kadr_farm.discovery._get',
+        _fake_api(calls, return_next=False),
+    )
+
+    report = discover_youtube(
+        _settings(data_dir=tmp_path / 'data'),
+        tmp_path / 'out',
+        market='both',
+        now=_now(),
+    )
+
+    search_calls = [c for c in calls if c[0] == 'search']
+
+    assert len(search_calls) == 80
+    assert len(report['search_sets']) == 80
+    assert {x['market'] for x in report['search_sets']} == {'ru', 'global'}
+
+    assert any(c[1].get('regionCode') == 'RU' for c in search_calls)
+    assert any('regionCode' not in c[1] for c in search_calls)
+
+    assert set(report['most_popular_charts']) == {'RU', 'US'}
+
+    assert report['search_design']['market_mode'] == 'both'
+    assert len(report['search_design']['markets']) == 2
+    assert report['search_design']['chart_regions'] == ['RU', 'US']
+    assert report['search_design']['planned_first_pages'] == 80
+
+    assert report['quota_usage']['search_list_calls'] == 80
+    assert report['quota_usage']['search_list_calls_remaining_today'] == 10
 
 def test_custom_query_uses_8_first_pages_and_preserves_order_provenance(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls, return_next=False))
     report = discover_youtube(
         _settings(data_dir=tmp_path / 'data'), tmp_path / 'out',
-        query='локальная нейросеть|local AI', now=_now(),
+        query='локальная нейросеть|local AI', market='both', now=_now(),
     )
     search_calls = [c for c in calls if c[0] == 'search']
     assert len(search_calls) == 8
@@ -136,17 +196,22 @@ def test_custom_query_uses_8_first_pages_and_preserves_order_provenance(tmp_path
     assert report['quota_usage']['search_list_calls_remaining_today'] == 82
 
 
-def test_second_full_run_is_blocked_before_any_new_api_call(tmp_path, monkeypatch):
+def test_two_russian_runs_fit_daily_budget_and_third_is_blocked(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls))
     settings = _settings(data_dir=tmp_path / 'data')
-    discover_youtube(settings, tmp_path / 'first', now=_now())
-    previous_search_count = len([x for x in calls if x[0] == 'search'])
-    with pytest.raises(DailyQuotaExceeded, match='нужно 80 первых страниц'):
-        discover_youtube(settings, tmp_path / 'second', now=_now())
-    assert len([x for x in calls if x[0] == 'search']) == previous_search_count
-    assert not (tmp_path / 'second' / 'discovery.json').exists()
 
+    discover_youtube(settings, tmp_path / 'first', now=_now())
+    discover_youtube(settings, tmp_path / 'second', now=_now())
+
+    previous_search_count = len([x for x in calls if x[0] == 'search'])
+    assert previous_search_count == 80
+
+    with pytest.raises(DailyQuotaExceeded, match='нужно 40 первых страниц'):
+        discover_youtube(settings, tmp_path / 'third', now=_now())
+
+    assert len([x for x in calls if x[0] == 'search']) == previous_search_count
+    assert not (tmp_path / 'third' / 'discovery.json').exists()
 
 def test_external_usage_reconciliation_is_persistent_and_reduces_daily_capacity(tmp_path, monkeypatch):
     calls = []
@@ -156,7 +221,13 @@ def test_external_usage_reconciliation_is_persistent_and_reduces_daily_capacity(
     ledger.set_external_usage(84, now=_now())
     assert ledger.status(now=_now())['remaining'] == 6
     with pytest.raises(DailyQuotaExceeded, match='осталось только 6'):
-        discover_youtube(settings, tmp_path / 'out', query='test', now=_now())
+        discover_youtube(
+            settings,
+            tmp_path / 'out',
+            query='test',
+            market='both',
+            now=_now(),
+        )
     assert not [x for x in calls if x[0] == 'search']
 
 
@@ -165,7 +236,11 @@ def test_optional_pagination_uses_only_budget_after_all_first_pages(tmp_path, mo
     monkeypatch.setattr('kadr_farm.discovery._get', _fake_api(calls, return_next=True))
     report = discover_youtube(
         _settings(data_dir=tmp_path / 'data'), tmp_path / 'out',
-        query='test query', max_pages=2, search_call_budget=10, now=_now(),
+        query='test query',
+        market='both',
+        max_pages=2,
+        search_call_budget=10,
+        now=_now(),
     )
     search_calls = [x for x in calls if x[0] == 'search']
     assert len(search_calls) == 10
@@ -203,6 +278,25 @@ def test_validation(tmp_path):
         discover_youtube(_settings(data_dir=tmp_path / 'd'), tmp_path, query='  ')
     with pytest.raises(ValueError, match='timezone-aware'):
         discover_youtube(_settings(data_dir=tmp_path / 'e'), tmp_path, now=dt.datetime(2026, 11, 2))
+
+
+def test_market_validation_rejects_unknown_market_and_non_ru_region(tmp_path):
+    with pytest.raises(ValueError, match="market должен быть"):
+        discover_youtube(
+            _settings(data_dir=tmp_path / 'invalid-market'),
+            tmp_path / 'out-invalid',
+            market='global',
+            now=_now(),
+        )
+
+    with pytest.raises(ValueError, match="только --region RU"):
+        discover_youtube(
+            _settings(data_dir=tmp_path / 'invalid-region'),
+            tmp_path / 'out-region',
+            market='ru',
+            region='US',
+            now=_now(),
+        )
 
 
 def test_cleanup_removes_discovery_stage3_and_stage4_outputs_only_after_expiry(tmp_path):

@@ -149,9 +149,15 @@ def cmd_discover(args: argparse.Namespace) -> int:
     s = load_settings()
     out = _path(args.out)
     report = discover_youtube(
-        s, out, query=args.query, region=args.region,
-        language=args.language, max_results=args.max_results,
-        max_pages=args.max_pages, search_call_budget=args.search_call_budget,
+        s,
+        out,
+        query=args.query,
+        region=args.region,
+        language=args.language,
+        market=args.market,
+        max_results=args.max_results,
+        max_pages=args.max_pages,
+        search_call_budget=args.search_call_budget,
     )
     print(f"Готово: {out / 'discovery.json'} и {out / 'discovery.md'}")
     print(f"Уникальных видео: {report['candidate_count']}")
@@ -336,8 +342,17 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--per-query", type=int, default=25)
     a.add_argument("--region", default="RU"); a.add_argument("--days", type=int, default=365)
     a.set_defaults(func=cmd_analyze)
-    disc = sub.add_parser("discover", help="Ежедневный широкий поиск популярных видео YouTube по 10 направлениям")
+    disc = sub.add_parser(
+        "discover",
+        help="Широкий поиск популярных видео YouTube по 10 направлениям",
+    )
     disc.add_argument("--query", default=None, help="Необязательно: вместо широкого поиска выполнить один пользовательский запрос; OR можно задавать через |")
+    disc.add_argument(
+        "--market",
+        choices=("ru", "both"),
+        default="ru",
+        help="Рынок поиска: ru — только Россия (40 первых страниц); both — Россия и международная выдача (80)",
+    )
     disc.add_argument("--region", default="RU", help="Регион доступности российской выдачи, ISO 3166-1 alpha-2")
     disc.add_argument("--language", default="ru", help="Языковой приоритет российской выдачи")
     disc.add_argument("--max-results", type=int, default=DEFAULT_MAX_RESULTS, help="Число результатов на страницу (1–50)")
