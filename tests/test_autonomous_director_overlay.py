@@ -180,18 +180,17 @@ def test_source_audit_never_marks_claim_verified(monkeypatch, tmp_path):
     assert report["entries"][0]["status"] == "human_review_required"
 
 
-def test_critic_can_use_a_separate_configured_provider(monkeypatch):
+def test_critic_uses_the_same_pinned_provider_as_the_production_run(monkeypatch):
     from types import SimpleNamespace
     from kadr_farm.production_director import _critic_settings
 
     primary = SimpleNamespace(name="primary", model="mws-gemma")
     secondary = SimpleNamespace(name="secondary", model="qwen-local")
-    settings = SimpleNamespace(providers=[primary, secondary])
+    settings = SimpleNamespace(providers=[primary])
     monkeypatch.setenv("DIRECTOR_CRITIC_PROVIDER", "secondary")
     critic_settings = _critic_settings(settings)
-    assert critic_settings is not settings
-    assert critic_settings.providers == [secondary]
-    assert settings.providers == [primary, secondary]
+    assert critic_settings is settings
+    assert critic_settings.providers == [primary]
 
 
 def test_pixabay_photo_is_decoded_and_resolution_checked(tmp_path):

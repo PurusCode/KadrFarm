@@ -21,7 +21,7 @@ from typing import Any
 
 from PIL import Image
 
-from .common import read_json
+from .common import read_json, write_json
 from .config import load_settings
 from .storyboard import create_storyboard
 from .html_renderer import render_html_video
@@ -36,6 +36,7 @@ from .text_normalization import normalize_for_speech
 from .kokoro_engine import synthesize_kokoro
 from .pixabay_media import fetch_pixabay, PixabayError, MAX_DOWNLOAD_CANDIDATES
 from .director_shots import plan_shots
+from .production_recovery import ProductionJournal, fingerprint
 
 log = logging.getLogger("kadr_farm.production_director")
 
@@ -154,8 +155,16 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
-def _director_plan_fingerprint(scenes: list[dict[str, Any]]) -> str:
-    payload = {"scenes": scenes, "director_policy_version": DIRECTOR_POLICY_VERSION}
+def _director_plan_fingerprint(scenes: list[dict[str, Any]], settings=None) -> str:
+    provider = None
+    if settings is not None and getattr(settings, "providers", None):
+        selected = settings.providers[0]
+        provider = {
+            "name": getattr(selected, "name", None),
+            "model": getattr(selected, "model", None),
+            "base_url": getattr(selected, "base_url", None),
+        }
+    payload = {"scenes": scenes, "director_policy_version": DIRECTOR_POLICY_VERSION, "provider": provider}
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
@@ -174,9 +183,9 @@ def _check_exact_coverage(plan: dict[str, Any], scene: dict[str, Any]) -> None:
         raise ValueError(f"{scene['id']}: no visual beats")
 
 
-def _make_director_plan(settings, scenes, batch_size, out_path):
+def _make_director_plan(settings, scenes, batch_size, out_path, *, journal=None):
     progress_path = out_path.with_suffix(".progress.json")
-    source_fp = _director_plan_fingerprint(scenes)
+    source_fp = _director_plan_fingerprint(scenes, settings)
     completed = {}
     if progress_path.exists():
         saved = read_json(progress_path)
@@ -185,14 +194,19 @@ def _make_director_plan(settings, scenes, batch_size, out_path):
             saved = {}
         completed = saved.get("completed", {})
     pending = [s for s in scenes if s["id"] not in completed]
+    router = StructuredLLMRouter(settings, journal=journal)
     for offset in range(0, len(pending), batch_size):
         batch = pending[offset:offset + batch_size]
         payload = [{"scene_id": s["id"], "voice_text": s["voice_text"],
                     "meaning": s.get("meaning", ""), "purpose": s.get("purpose", "")} for s in batch]
         prompt = "Создай точный режиссёрский план для этих сцен:\n" + json.dumps(payload, ensure_ascii=False)
-        result = StructuredLLMRouter(settings).complete(
-            DirectorBatch, DIRECTOR_SYSTEM, prompt, temperature=0.35, max_tokens=8500).plans
+        batch_task_id = f"director:batch:{','.join(s['id'] for s in batch)}"
+        result = router.complete(
+            DirectorBatch, DIRECTOR_SYSTEM, prompt, temperature=0.35, max_tokens=8500,
+            task_id=batch_task_id, stage="director_planning").plans
         if {p.scene_id for p in result} != {s["id"] for s in batch} or len(result) != len(batch):
+            if journal is not None:
+                journal.reject_task(batch_task_id, "Director returned missing/duplicate scene IDs")
             raise ValueError("Director returned missing/duplicate scene IDs")
         invalid = []
         for p in result:
@@ -204,20 +218,38 @@ def _make_director_plan(settings, scenes, batch_size, out_path):
             except ValueError as exc:
                 invalid.append({"scene": scene, "bad_plan": pdata, "error": str(exc)})
         if invalid:
+            if journal is not None:
+                journal.reject_task(
+                    batch_task_id,
+                    "Director exact-narration coverage failed: " + "; ".join(
+                        f"{item['scene']['id']}: {item['error']}"
+                        for item in invalid
+                    ),
+                )
+
             repair_payload = [{"scene_id": x["scene"]["id"], "voice_text": x["scene"]["voice_text"],
                                "previous_plan": x["bad_plan"], "validation_error": x["error"]} for x in invalid]
-            corrected = StructuredLLMRouter(settings).complete(
+            repair_task_id = f"director:coverage-repair:{','.join(x['scene']['id'] for x in invalid)}"
+            corrected = router.complete(
                 DirectorBatch, REPAIR_SYSTEM,
                 "КРИТИЧЕСКАЯ ОШИБКА: spoken_text должен в точности покрывать исходную речь. "
                 "Исправь только эти планы.\n" + json.dumps(repair_payload, ensure_ascii=False),
-                temperature=0.05, max_tokens=8500).plans
+                temperature=0.05, max_tokens=8500,
+                task_id=repair_task_id, stage="director_coverage_repair").plans
             expected = {x["scene"]["id"] for x in invalid}
             if {p.scene_id for p in corrected} != expected or len(corrected) != len(expected):
+                if journal is not None:
+                    journal.reject_task(repair_task_id, "Narration exact-coverage repair returned incomplete scene set")
                 raise ValueError("Narration exact-coverage repair returned incomplete scene set")
             for p in corrected:
                 pdata = p.model_dump(mode="json")
                 scene = next(x["scene"] for x in invalid if x["scene"]["id"] == p.scene_id)
-                _check_exact_coverage(pdata, scene)
+                try:
+                    _check_exact_coverage(pdata, scene)
+                except ValueError as exc:
+                    if journal is not None:
+                        journal.reject_task(repair_task_id, str(exc))
+                    raise
                 completed[p.scene_id] = pdata
         _atomic_json(progress_path, {"source_sha256": source_fp, "completed": completed, "status": "in_progress"})
         log.info("AI director checkpoint: %d/%d scenes", len(completed), len(scenes))
@@ -228,33 +260,52 @@ def _make_director_plan(settings, scenes, batch_size, out_path):
     return plans
 
 
-def _critic_settings(settings):
-    policy = os.getenv("DIRECTOR_CRITIC_PROVIDER", "auto").strip().lower()
-    if policy == "auto":
-        return settings
+def _production_llm_settings(settings):
+    """Pin one explicitly selected provider for the complete production run."""
+    policy = os.getenv("KADR_PRODUCTION_LLM_PROVIDER", "primary").strip().lower()
     if policy not in ("primary", "secondary"):
-        raise ValueError("DIRECTOR_CRITIC_PROVIDER must be auto, primary or secondary")
-    selected = [p for p in list(getattr(settings, "providers", []))
-                if str(getattr(p, "name", "")).lower() == policy]
+        raise ValueError("KADR_PRODUCTION_LLM_PROVIDER must be primary or secondary")
+    providers = list(getattr(settings, "providers", []))
+    selected = [p for p in providers if str(getattr(p, "name", "")).lower() == policy]
     if not selected:
-        raise ValueError(f"DIRECTOR_CRITIC_PROVIDER={policy} is not configured in .env")
+        available = [str(getattr(p, "name", "unknown")) for p in providers]
+        raise ValueError(
+            f"KADR_PRODUCTION_LLM_PROVIDER={policy} is not configured. "
+            f"Available providers: {available}. Automatic fallback is disabled."
+        )
     clone = copy(settings)
-    clone.providers = selected
+    clone.providers = [selected[0]]
+    log.info("Production LLM provider pinned to %s / %s (no automatic model fallback)",
+             selected[0].name, selected[0].model)
     return clone
 
 
-def _critique(settings, scenes, plans):
+def _critic_settings(settings):
+    """Use the provider pinned for this run for every director subtask, including critique."""
+    legacy = os.getenv("DIRECTOR_CRITIC_PROVIDER", "auto").strip().lower()
+    if legacy not in ("", "auto"):
+        log.warning(
+            "DIRECTOR_CRITIC_PROVIDER is ignored in production recovery mode; "
+            "select one provider for the complete run via KADR_PRODUCTION_LLM_PROVIDER"
+        )
+    return settings
+
+
+def _critique(settings, scenes, plans, *, journal=None, task_id="director:critic"):
     payload = []
     plan_by = {p["scene_id"]: p for p in plans}
     for s in scenes:
         payload.append({"scene_id": s["id"], "voice_text": s["voice_text"],
                         "meaning": s.get("meaning"), "plan": plan_by[s["id"]]})
-    result = StructuredLLMRouter(_critic_settings(settings)).complete(
+    result = StructuredLLMRouter(_critic_settings(settings), journal=journal).complete(
         CritiqueBatch, CRITIC_SYSTEM,
         "Проведи независимую редакторскую проверку:\n" + json.dumps(payload, ensure_ascii=False),
-        temperature=0.1, max_tokens=min(8500, 1800 + len(scenes) * 600))
+        temperature=0.1, max_tokens=min(8500, 1800 + len(scenes) * 600),
+        task_id=task_id, stage="director_critic")
     ids = {s["id"] for s in scenes}
     if {x.scene_id for x in result.reviews} != ids or len(result.reviews) != len(ids):
+        if journal is not None:
+            journal.reject_task(task_id, "AI critic did not return exactly one review per scene")
         raise ValueError("AI critic did not return exactly one review per scene")
     return result.model_dump(mode="json")
 
@@ -265,7 +316,7 @@ def _is_bad(review: dict[str, Any]) -> bool:
                    review["narration_coverage_score"]) < 3)
 
 
-def _repair(settings, scenes, plans, critique):
+def _repair(settings, scenes, plans, critique, *, journal=None, task_id="director:repair"):
     bad = {r["scene_id"]: r for r in critique["reviews"] if _is_bad(r)}
     if not bad:
         return plans
@@ -275,18 +326,26 @@ def _repair(settings, scenes, plans, critique):
                 "meaning": scene_by[sid].get("meaning"), "current_plan": plan_by[sid],
                 "critic_problems": r["problems"], "revision_brief": r["revision_brief"]}
                for sid, r in bad.items()]
-    revised = StructuredLLMRouter(settings).complete(
+    revised = StructuredLLMRouter(settings, journal=journal).complete(
         DirectorBatch, REPAIR_SYSTEM,
         "Исправь проблемные режиссёрские планы:\n" + json.dumps(payload, ensure_ascii=False),
-        temperature=0.1, max_tokens=min(8500, 2200 + len(bad) * 1400)).plans
+        temperature=0.1, max_tokens=min(8500, 2200 + len(bad) * 1400),
+        task_id=task_id, stage="director_repair").plans
     if {p.scene_id for p in revised} != set(bad) or len(revised) != len(bad):
+        if journal is not None:
+            journal.reject_task(task_id, "Auto-repair returned missing/duplicate scene IDs")
         raise ValueError("Auto-repair returned missing/duplicate scene IDs")
     out = []
     for old in plans:
         replacement = next((p.model_dump(mode="json") for p in revised if p.scene_id == old["scene_id"]), None)
         out.append(replacement or old)
     for plan in out:
-        _check_exact_coverage(plan, scene_by[plan["scene_id"]])
+        try:
+            _check_exact_coverage(plan, scene_by[plan["scene_id"]])
+        except ValueError as exc:
+            if journal is not None:
+                journal.reject_task(task_id, str(exc))
+            raise
     return out
 
 
@@ -510,6 +569,7 @@ def _asset_for_beat(settings, scene, beat, visuals_dir, warnings, index, duratio
             overlay = render_stock_overlay(
                 beat["on_screen_text"], visuals_dir / f"{scene['id']}_{index:02d}_overlay.png")
             asset["overlay_path"] = str(overlay.resolve())
+            asset["overlay_sha256"] = _file_sha256(overlay)
         return asset
 
     if strategy != "rendered":
@@ -558,6 +618,45 @@ def _padded_wav(src: Path, extra_sec: float, pad_dir: Path) -> Path:
     return dst
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_cached_visual_asset(path: Path, expected_fingerprint: str) -> dict[str, Any] | None:
+    try:
+        cached = read_json(path)
+        if cached.get("input_fingerprint") != expected_fingerprint:
+            return None
+        asset = cached.get("asset") or {}
+        visual_path = Path(asset.get("path") or "")
+        if not visual_path.is_file():
+            return None
+        expected_sha = asset.get("sha256")
+        if not expected_sha or _file_sha256(visual_path) != expected_sha:
+            return None
+
+        overlay = asset.get("overlay_path")
+        if overlay:
+            overlay_path = Path(overlay)
+            expected_overlay_sha = asset.get("overlay_sha256")
+
+            if (
+                not overlay_path.is_file()
+                or not expected_overlay_sha
+                or _file_sha256(overlay_path) != expected_overlay_sha
+            ):
+                return None
+        elif asset.get("overlay_sha256"):
+            return None
+        return cached
+    except Exception:
+        return None
+
+
 def _produce(settings, scenes, plans, out_dir, speed, pause_seconds, punchline_pause):
     if str(getattr(settings, "tts_engine", "kokoro")).lower() != "kokoro" or \
        str(getattr(settings, "tts_speaker", "dima")).lower() != "dima":
@@ -569,6 +668,8 @@ def _produce(settings, scenes, plans, out_dir, speed, pause_seconds, punchline_p
     audio_dir.mkdir(parents=True, exist_ok=True)
     visuals_dir.mkdir(parents=True, exist_ok=True)
     scene_by = {s["id"]: s for s in scenes}
+    asset_checkpoint_dir = out_dir / "asset_checkpoints"
+    asset_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     prepared, flat = [], []
     for plan in plans:
@@ -600,8 +701,31 @@ def _produce(settings, scenes, plans, out_dir, speed, pause_seconds, punchline_p
             wav = _padded_wav(wav, extra, audio_dir / "padded")
         duration = _wav_duration(wav)
         # Визуал рендерится ПОСЛЕ измерения речи и ровно под её длительность.
-        asset = _asset_for_beat(settings, scene, beat, visuals_dir, warnings, bi, duration,
-                                 used_source_urls=used_source_urls)
+        asset_input_fp = fingerprint({
+            "scene_id": scene["id"], "scene_meaning": scene.get("meaning", ""),
+            "beat": beat, "duration": round(duration, 4),
+            "fps": getattr(settings, "fps", 25),
+            "width": getattr(settings, "width", 1920),
+            "height": getattr(settings, "height", 1080),
+            "director_policy": DIRECTOR_POLICY_VERSION,
+        })
+        asset_checkpoint = asset_checkpoint_dir / f"{block_id}.json"
+        cached_asset = _load_cached_visual_asset(asset_checkpoint, asset_input_fp)
+        if cached_asset is not None:
+            asset = cached_asset["asset"]
+            warnings.extend(cached_asset.get("warnings", []))
+            if asset.get("source_url"):
+                used_source_urls.add(asset["source_url"])
+            log.info("Visual checkpoint reused: %s", block_id)
+        else:
+            warning_start = len(warnings)
+            asset = _asset_for_beat(settings, scene, beat, visuals_dir, warnings, bi, duration,
+                                    used_source_urls=used_source_urls)
+            write_json(asset_checkpoint, {
+                "block_id": block_id, "input_fingerprint": asset_input_fp,
+                "asset": asset, "warnings": warnings[warning_start:],
+                "completed_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            })
         beats.append({
             "scene_id": scene["id"], "beat_id": f"b{bi:02d}",
             "spoken_text": beat["spoken_text"], "audio_path": str(wav.resolve()),
@@ -698,10 +822,10 @@ def _post_qc(settings, beats, source_audit, audio_report, assembly, video_path,
     return report
 
 
-def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_dir: Path,
-                 scene_limit: int | None = 10, batch_size: int = 2, speed: float = 1.0,
-                 revision_rounds: int = 1, settings: Any | None = None) -> dict[str, Any]:
-    settings = settings or load_settings()
+def _run_pipeline_impl(*, script_path: Path | None, storyboard_path: Path | None, out_dir: Path,
+                       scene_limit: int | None = 10, batch_size: int = 2, speed: float = 1.0,
+                       revision_rounds: int = 1, settings: Any | None = None) -> dict[str, Any]:
+    settings = _production_llm_settings(settings or load_settings())
     if (script_path is None) == (storyboard_path is None):
         raise ValueError("Specify exactly one of script_path or storyboard_path")
     if not 1 <= batch_size <= 4:
@@ -713,13 +837,39 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
     strict_critic = os.getenv("KADR_STRICT_CRITIC", "0").strip() == "1"
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    journal = ProductionJournal(out_dir)
+    source_path = script_path if script_path is not None else storyboard_path
+    source_sha256 = hashlib.sha256(Path(source_path).read_bytes()).hexdigest()
+    run_context = {
+        "source_type": "script" if script_path is not None else "storyboard",
+        "source_path": str(Path(source_path).resolve()),
+        "source_sha256": source_sha256,
+        "scene_limit": scene_limit, "batch_size": batch_size,
+        "revision_rounds": revision_rounds,
+        "director_policy_version": DIRECTOR_POLICY_VERSION,
+        "provider": str(
+            getattr(settings.providers[0], "name", "primary")
+        ).strip().lower(),
+        "provider_identity": {
+            "name": str(
+                getattr(settings.providers[0], "name", "")
+            ).strip().lower(),
+            "model": str(
+                getattr(settings.providers[0], "model", "")
+            ).strip(),
+            "base_url": str(
+                getattr(settings.providers[0], "base_url", "")
+            ).strip(),
+        },
+    }
+    journal.set_run_context(run_context)
+    journal.start_stage("storyboard", input_fingerprint=fingerprint(run_context))
     draft_path = out_dir / "storyboard_draft.json"
     if script_path:
-        script_fp = hashlib.sha256(
-            json.dumps(read_json(script_path), ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-        reuse = draft_path.exists() and read_json(draft_path).get("source_script_sha256") == script_fp
-        if not reuse:
-            create_storyboard(settings, script_path, draft_path)
+        # Повторно запускаем создание storyboard, но не повторяем
+        # готовые блоки: StructuredLLMRouter проверяет fingerprint
+        # каждого блока, включая модель, endpoint и промпты.
+        create_storyboard(settings, script_path, draft_path, journal=journal)
     else:
         shutil.copy2(storyboard_path, draft_path)
     source = read_json(draft_path)
@@ -735,9 +885,12 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
         raise ValueError("Duplicate scene IDs in storyboard")
     source["scenes"] = scenes
     _atomic_json(out_dir / "pilot_storyboard.json", source)
+    journal.complete_stage("storyboard", artifact=str(draft_path.resolve()),
+                           details={"scene_count": len(scenes)})
 
     plan_path = out_dir / "director_plan.json"
-    expected_fp = _director_plan_fingerprint(scenes)
+    expected_fp = _director_plan_fingerprint(scenes, settings)
+    journal.start_stage("director_plan", input_fingerprint=expected_fp)
     reuse_plan = False
     if plan_path.exists():
         cached = read_json(plan_path)
@@ -754,11 +907,14 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
         else:
             log.info("Cached director plan uses an older policy or different narration; regenerating it")
     if not reuse_plan:
-        plans = _make_director_plan(settings, scenes, batch_size, plan_path)
+        plans = _make_director_plan(settings, scenes, batch_size, plan_path, journal=journal)
+    journal.complete_stage("director_plan", artifact=str(plan_path.resolve()),
+                           details={"scene_count": len(plans), "reused": reuse_plan})
 
     review_path = out_dir / "director_review.json"
     plan_fp = hashlib.sha256(json.dumps(
-        {"scenes": scenes, "plans": plans, "director_policy_version": DIRECTOR_POLICY_VERSION}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        {"scenes": scenes, "plans": plans, "director_policy_version": DIRECTOR_POLICY_VERSION, "provider_fingerprint": _director_plan_fingerprint(scenes, settings)}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    journal.start_stage("critic_and_repair", input_fingerprint=fingerprint({"scenes": scenes, "plans": plans, "revision_rounds": revision_rounds}))
     cached_review = read_json(review_path) if review_path.exists() else None
     if cached_review and cached_review.get("plan_sha256") == plan_fp:
         review_history = cached_review.get("history", [])
@@ -767,18 +923,20 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
     else:
         review_history = []
         for round_no in range(revision_rounds + 1):
-            critique = _critique(settings, scenes, plans)
+            critique = _critique(settings, scenes, plans, journal=journal,
+                                  task_id=f"director:critic:round-{round_no + 1}")
             review_history.append({"round": round_no, "critique": critique})
             _atomic_json(out_dir / f"director_critique_round_{round_no + 1}.json", critique)
             bad = [x for x in critique["reviews"] if _is_bad(x)]
             if not bad or round_no == revision_rounds:
                 break
-            plans = _repair(settings, scenes, plans, critique)
+            plans = _repair(settings, scenes, plans, critique, journal=journal,
+                             task_id=f"director:repair:round-{round_no + 1}")
             _atomic_json(plan_path, {"plans": plans, "repaired": True, "round": round_no + 1,
-                                     "source_sha256": _director_plan_fingerprint(scenes)})
+                                     "source_sha256": _director_plan_fingerprint(scenes, settings)})
         unresolved = [x for x in critique["reviews"] if _is_bad(x)]
         plan_fp = hashlib.sha256(json.dumps(
-            {"scenes": scenes, "plans": plans, "director_policy_version": DIRECTOR_POLICY_VERSION}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            {"scenes": scenes, "plans": plans, "director_policy_version": DIRECTOR_POLICY_VERSION, "provider_fingerprint": _director_plan_fingerprint(scenes, settings)}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         _atomic_json(review_path, {
             "history": review_history, "unresolved": unresolved,
             "plan_sha256": plan_fp,
@@ -792,18 +950,30 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
     _atomic_json(plan_path, {"plans": plans,
                              "status": "accepted_with_warnings" if unresolved else "accepted_by_ai_critic",
                              "scene_count": len(plans),
-                             "source_sha256": _director_plan_fingerprint(scenes)})
+                             "source_sha256": _director_plan_fingerprint(scenes, settings)})
+    journal.complete_stage("critic_and_repair", artifact=str(review_path.resolve()),
+                           details={"unresolved_scenes": len(unresolved)})
 
     shot_plan_path = out_dir / "shot_plan.json"
-    shot_result = plan_shots(settings, scenes, plans, shot_plan_path, batch_size=batch_size)
+    journal.start_stage("shot_planning", input_fingerprint=fingerprint({"scenes": scenes, "plans": plans}))
+    shot_result = plan_shots(settings, scenes, plans, shot_plan_path, batch_size=batch_size, journal=journal)
     shot_plans = shot_result["plans"]
-    source_audit = audit_claim_sources(settings, plans, out_dir / "source_audit.json")
+    journal.complete_stage("shot_planning", artifact=str(shot_plan_path.resolve()))
+
+    journal.start_stage("source_audit", input_fingerprint=fingerprint(plans))
+    source_audit = audit_claim_sources(settings, plans, out_dir / "source_audit.json", journal=journal)
+    journal.complete_stage("source_audit", artifact=str((out_dir / "source_audit.json").resolve()))
+
+    journal.start_stage("visual_production", input_fingerprint=fingerprint({"shot_plans": shot_plans, "speed": speed}))
     beats, production = _produce(settings, scenes, shot_plans, out_dir / "production",
                                  speed, pause_seconds, punchline_pause)
+    journal.complete_stage("visual_production", artifact=str((out_dir / "production").resolve()),
+                           details={"beat_count": len(beats)})
     if unresolved:
         production["warnings"].append(
             f"critic_unresolved_scenes={[r['scene_id'] for r in unresolved]}")
 
+    journal.start_stage("postproduction", input_fingerprint=fingerprint({"beat_count": len(beats), "source_audit": source_audit}))
     asset_audit = audit_visual_assets(beats, out_dir / "visual_asset_audit.json", ffmpeg=settings.ffmpeg)
     production["visual_asset_audit_status"] = asset_audit["status"]
     production["visual_asset_audit_errors"] = asset_audit["errors"]
@@ -874,7 +1044,31 @@ def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_
         "facts_verified": False, "human_review_required": True,
     }
     _atomic_json(out_dir / "director_report.json", report)
+    journal.complete_stage("postproduction", artifact=str((out_dir / "director_report.json").resolve()))
+    journal.finish_run(status="complete" if report["status"] == "complete" else "failed",
+                       report_path=str((out_dir / "director_report.json").resolve()))
     return report
+
+
+def run_pipeline(*, script_path: Path | None, storyboard_path: Path | None, out_dir: Path,
+                 scene_limit: int | None = 10, batch_size: int = 2, speed: float = 1.0,
+                 revision_rounds: int = 1, settings: Any | None = None) -> dict[str, Any]:
+    try:
+        return _run_pipeline_impl(
+            script_path=script_path, storyboard_path=storyboard_path, out_dir=out_dir,
+            scene_limit=scene_limit, batch_size=batch_size, speed=speed,
+            revision_rounds=revision_rounds, settings=settings,
+        )
+    except Exception as exc:
+        try:
+            journal = ProductionJournal(out_dir)
+            current = journal.state.get("current_stage") or {}
+            stage = current.get("stage") or "startup"
+            journal.fail_stage(stage, exc)
+            log.error("Production paused at %s. Recovery state: %s", stage, journal.state_file())
+        except Exception:
+            log.exception("Could not persist production failure state")
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:

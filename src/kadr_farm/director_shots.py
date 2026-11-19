@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .director_models import DirectorBeat
 from .llm_structured import StructuredLLMRouter
+from .production_recovery import ProductionJournal
 
 log = logging.getLogger("kadr_farm.director_shots")
 
@@ -198,6 +199,7 @@ def plan_shots(
     director_plans: list[dict[str, Any]],
     output_path: Path,
     batch_size: int = 2,
+    journal: ProductionJournal | None = None,
 ) -> dict[str, Any]:
     """Create a validated, resumable shot plan; never accept model-made timestamps."""
     if not 1 <= int(batch_size) <= 4:
@@ -216,7 +218,11 @@ def plan_shots(
     source_fingerprint = hashlib.sha256(
         json.dumps(
             {"scenes": scenes, "plans": director_plans,
-             "shot_policy_version": SHOT_POLICY_VERSION},
+             "shot_policy_version": SHOT_POLICY_VERSION,
+             "provider": [{"name": getattr(p, "name", None),
+                           "model": getattr(p, "model", None),
+                           "base_url": getattr(p, "base_url", None)}
+                          for p in getattr(settings, "providers", [])]},
             ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()
@@ -247,7 +253,7 @@ def plan_shots(
             completed = {}
             fallback_scenes = []
 
-    router = StructuredLLMRouter(settings)
+    router = StructuredLLMRouter(settings, journal=journal)
     pending = [scene for scene in scenes if scene["id"] not in completed]
     for offset in range(0, len(pending), int(batch_size)):
         batch = pending[offset : offset + int(batch_size)]
@@ -269,6 +275,10 @@ def plan_shots(
         rows_by: dict[str, list[dict[str, Any]]] | None = None
         error: str | None = None
         for attempt in range(2):
+            task_id = (
+                f"shot-plan:{','.join(s['id'] for s in batch)}:"
+                f"attempt-{attempt + 1}"
+            )
             result = router.complete(
                 ShotPlanBatch,
                 SYSTEM_PROMPT if attempt == 0 else SYSTEM_PROMPT + REPAIR_SUFFIX,
@@ -276,10 +286,19 @@ def plan_shots(
                 ("ОШИБКА ВАЛИДАЦИИ: " + str(error) + "\n" + base_prompt),
                 temperature=0.2 if attempt == 0 else 0.05,
                 max_tokens=min(8500, 2200 + len(batch) * 2600),
+                task_id=task_id,
+                stage="shot_planning",
             )
             rows_by, error = _accept_batch(result, batch, plan_by_id)
             if rows_by is not None:
                 break
+
+            if journal is not None:
+                journal.reject_task(
+                    task_id,
+                    error or "Shot planner semantic validation failed",
+                )
+
             log.warning("Shot planner attempt %d rejected: %s", attempt + 1, error)
 
         if rows_by is None:

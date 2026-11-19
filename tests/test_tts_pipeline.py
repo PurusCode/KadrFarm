@@ -262,3 +262,68 @@ def test_runtime_initialization_failure_persists_failed_manifest(tmp_path, monke
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "failed"
     assert "RUAccent assets missing" in manifest["error"]
+
+
+
+@pytest.mark.parametrize("checksum_mode", ["missing", "mismatch"])
+def test_kokoro_does_not_reuse_wav_without_valid_file_checksum(
+    tmp_path, monkeypatch, checksum_mode
+):
+    settings = _settings(tmp_path)
+    runtime = _fake_runtime(tmp_path)
+
+    # Используем тот же stress config, который ожидает production-код.
+    stress_path = settings.root / "data" / "kokoro_stress_config.json"
+    stress_path.parent.mkdir(parents=True, exist_ok=True)
+    stress_path.write_bytes(runtime.stress_config_path.read_bytes())
+    runtime.stress_config_path = stress_path
+
+    monkeypatch.setattr(
+        kokoro_engine,
+        "load_runtime",
+        lambda *_args: runtime,
+    )
+
+    # Изолируем тест SHA WAV от проверки полноты системных assets.
+    monkeypatch.setattr(
+        kokoro_engine,
+        "_audio_cache_runtime_fingerprint",
+        lambda *_args, **_kwargs: {"test_runtime_signature": "stable"},
+    )
+    monkeypatch.setenv("KOKORO_THREADS", "2")
+
+    script = _script(
+        tmp_path,
+        [{"id": "intro", "voice_text": "Проверочный текст для кеша."}],
+    )
+    out = tmp_path / "audio"
+
+    first = tts.synthesize(settings, script, out, speed=0.9)
+
+    first_call_count = len(runtime.session.calls)
+    assert first_call_count > 0
+    assert first["blocks_generated"] == 1
+    assert first["blocks_reused"] == 0
+
+    manifest_path = out / "manifest.json"
+    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert saved["blocks"][0]["file_sha256"]
+
+    if checksum_mode == "missing":
+        saved["blocks"][0].pop("file_sha256")
+    else:
+        saved["blocks"][0]["file_sha256"] = "0" * 64
+
+    manifest_path.write_text(
+        json.dumps(saved, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    second = tts.synthesize(settings, script, out, speed=0.9)
+
+    # Если кеш ошибочно принят, повторного обращения к модели не будет.
+    assert len(runtime.session.calls) > first_call_count
+    assert second["blocks_reused"] == 0
+    assert second["blocks_generated"] == 1
+    assert second["status"] == "complete"

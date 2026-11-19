@@ -64,7 +64,7 @@ def fetch_source_excerpt(url: str, max_bytes: int=700_000, max_chars: int=5000) 
     except requests.RequestException as exc:
         return {"url":url,"status":"fetch_error","text":"","error":str(exc)[:300]}
 
-def audit_claim_sources(settings: Any, plans: list[dict[str, Any]], output_path) -> dict[str, Any]:
+def audit_claim_sources(settings: Any, plans: list[dict[str, Any]], output_path, *, journal=None) -> dict[str, Any]:
     candidates=[]; results=[]
     for plan in plans:
         for ci, claim in enumerate(plan.get("claims", []),1):
@@ -89,11 +89,17 @@ evidence_quote должен быть дословной короткой цит�
     for offset in range(0,len(candidates),3):
         batch=candidates[offset:offset+3]
         payload=[{k:x[k] for k in ("source_id","scene_id","claim","url","url_status","page_text")} for x in batch]
-        assessment=StructuredLLMRouter(settings).complete(
+        task_id = ",".join(x["source_id"] for x in batch)
+        router = (StructuredLLMRouter(settings, journal=journal) if journal is not None
+                  else StructuredLLMRouter(settings))
+        assessment=router.complete(
             SourceEvidenceBatch,system,"Оцени источники:\n"+json.dumps(payload,ensure_ascii=False),
-            temperature=0.0,max_tokens=2600).assessments
+            temperature=0.0,max_tokens=2600,
+            task_id=f"source-audit:{task_id}", stage="source_audit").assessments
         expected={x["source_id"] for x in batch}
         if {x.source_id for x in assessment} != expected or len(assessment)!=len(expected):
+            if journal is not None:
+                journal.reject_task(f"source-audit:{task_id}", "Source auditor вернул неполный набор source_id")
             raise ValueError("Source auditor вернул неполный набор source_id")
         by_id={x.source_id:x.model_dump(mode="json") for x in assessment}
         for src in batch:

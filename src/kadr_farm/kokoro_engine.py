@@ -252,6 +252,124 @@ def load_runtime(settings: Any, threads: int) -> KokoroRuntime:
     )
 
 
+
+AUDIO_CACHE_FINGERPRINT_VERSION = 2
+
+
+def _directory_sha256(path: Path) -> str | None:
+    """Детерминированный SHA-256 всех файлов каталога."""
+    if not path.is_dir():
+        return None
+
+    files = sorted(
+        item for item in path.rglob("*")
+        if item.is_file()
+    )
+
+    if not files:
+        return None
+
+    digest = hashlib.sha256()
+
+    for item in files:
+        relative = item.relative_to(path).as_posix().encode("utf-8")
+
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(bytes.fromhex(sha256_file(item)))
+
+    return digest.hexdigest()
+
+
+def _audio_cache_runtime_fingerprint(
+    settings: Any,
+    stress_config_path: Path,
+    stress_config_digest: str | None,
+    normalizer_version: str,
+    normalizer_backend_name: str,
+    *,
+    runtime: Any | None = None,
+    allow_incomplete_assets: bool = False,
+) -> dict[str, Any] | None:
+    """
+    Проверяет фактические файлы Kokoro перед повторным использованием WAV.
+
+    До загрузки runtime используются стандартные пути проекта.
+    После загрузки runtime используются реальные пути загруженных файлов.
+
+    allow_incomplete_assets применяется только после load_runtime().
+    Реальная загрузка Kokoro самостоятельно проверяет обязательные каталоги.
+    Если необязательные для тестового runtime каталоги отсутствуют,
+    их отсутствие записывается в fingerprint как None. Такой fingerprint
+    не пройдёт строгую проверку кэша при следующем запуске.
+    """
+    if runtime is None:
+        model_root = settings.data_dir / "models" / "kokoro-ru-v2-onnx"
+        accent_root = settings.data_dir / "models" / "ruaccent-accentuator"
+
+        files = {
+            "model_sha256": model_root / "onnx" / "model_dima_quantized.onnx",
+            "voice_sha256": model_root / "voices" / "dima.bin",
+            "model_config_sha256": model_root / "config.json",
+            "kokoro_config_sha256": model_root / "kokoro-config.json",
+            "g2p_sha256": model_root / "ru_g2p.py",
+        }
+    else:
+        model_root = Path(runtime.model_root)
+        accent_root = Path(runtime.accent_model_root)
+
+        files = {
+            "model_sha256": Path(runtime.model_path),
+            "voice_sha256": Path(runtime.voice_path),
+            "model_config_sha256": Path(runtime.model_config_path),
+            "kokoro_config_sha256": Path(runtime.kokoro_config_path),
+            "g2p_sha256": Path(runtime.g2p_path),
+        }
+
+    stress_config_path = Path(stress_config_path)
+
+    if stress_config_digest is None or not stress_config_path.is_file():
+        return None
+
+    if any(not path.is_file() for path in files.values()):
+        return None
+
+    accent_digest = _directory_sha256(accent_root)
+    espeak_digest = _directory_sha256(model_root / "espeak-data")
+
+    if (
+        not allow_incomplete_assets
+        and (accent_digest is None or espeak_digest is None)
+    ):
+        return None
+
+    signature: dict[str, Any] = {
+        "audio_cache_fingerprint_version": AUDIO_CACHE_FINGERPRINT_VERSION,
+        "stress_config_sha256": stress_config_digest,
+        "accent_assets_sha256": accent_digest,
+        "espeak_data_sha256": espeak_digest,
+
+        "engine_version": package_version("onnxruntime"),
+        "numpy_version": package_version("numpy"),
+        "soundfile_version": package_version("soundfile"),
+        "ruaccent_version": package_version("ruaccent"),
+        "misaki_version": package_version("misaki"),
+        "phonemizer_fork_version": package_version("phonemizer-fork"),
+        "espeakng_loader_version": package_version("espeakng-loader"),
+
+        "text_normalizer_version": normalizer_version,
+        "text_normalizer_backend": normalizer_backend_name,
+        "python_version": platform.python_version(),
+    }
+
+    signature.update({
+        key: sha256_file(path)
+        for key, path in files.items()
+    })
+
+    return signature
+
+
 def synthesize_kokoro(settings: Any, prepared: list[tuple[str, dict[str, Any], str, str]],
                       out_dir: Path, speed: float) -> dict[str, Any]:
     from .kokoro_stress import stress_config_sha256
@@ -260,7 +378,70 @@ def synthesize_kokoro(settings: Any, prepared: list[tuple[str, dict[str, Any], s
     out_dir.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     manifest_path = out_dir / "manifest.json"
-    manifest: dict[str, Any] = {
+    previous_manifest: dict[str, Any] = {}
+    if manifest_path.is_file():
+        try:
+            previous_manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            previous_manifest = {}
+
+    cached_by_id: dict[str, dict[str, Any]] = {}
+    stress_config_path = settings.root / "data" / "kokoro_stress_config.json"
+    current_stress_sha = stress_config_sha256(stress_config_path) if stress_config_path.is_file() else None
+
+    current_cache_signature = _audio_cache_runtime_fingerprint(
+        settings,
+        stress_config_path,
+        current_stress_sha,
+        NORMALIZER_VERSION,
+        normalizer_backend(),
+    )
+
+    signature_matches = (
+        current_cache_signature is not None
+        and all(
+            previous_manifest.get(key) == value
+            for key, value in current_cache_signature.items()
+        )
+    )
+
+    if (signature_matches
+            and previous_manifest.get("revision") == REPO_REVISION
+            and previous_manifest.get("voice") == VOICE
+            and float(previous_manifest.get("speed", -1)) == float(speed)
+            and current_stress_sha is not None
+            and previous_manifest.get("stress_config_sha256") == current_stress_sha
+            and previous_manifest.get("text_normalizer_version") == NORMALIZER_VERSION):
+        old_rows = {str(row.get("id")): row for row in previous_manifest.get("blocks", [])}
+        for block_id, _block, source_text, normalized_text in prepared:
+            row = old_rows.get(block_id)
+            if not row:
+                continue
+            if row.get("source_voice_text_sha256") != hashlib.sha256(source_text.encode("utf-8")).hexdigest():
+                continue
+            if row.get("normalized_text_sha256") != hashlib.sha256(normalized_text.encode("utf-8")).hexdigest():
+                continue
+            wav_path = (out_dir / str(row.get("file") or "")).resolve()
+            if out_dir.resolve() not in wav_path.parents or not wav_path.is_file():
+                continue
+            try:
+                info = _wav_info(wav_path)
+                if info["sample_rate"] != SAMPLE_RATE or info["channels"] != 1 or info["sample_width_bytes"] != 2:
+                    continue
+                expected_file_sha = row.get("file_sha256")
+                actual_file_sha = sha256_file(wav_path)
+
+                if not expected_file_sha or expected_file_sha != actual_file_sha:
+                    continue
+                row = dict(row)
+                row["file_sha256"] = actual_file_sha
+                cached_by_id[block_id] = row
+            except Exception:
+                continue
+
+    cached_rows = [cached_by_id[block_id] for block_id, *_ in prepared if block_id in cached_by_id]
+    manifest: dict[str, Any] = dict(previous_manifest)
+    manifest.update({
         "status": "running",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "engine": "Kokoro-ru v2 ONNX (CPU)",
@@ -276,13 +457,21 @@ def synthesize_kokoro(settings: Any, prepared: list[tuple[str, dict[str, Any], s
         "sample_rate": SAMPLE_RATE,
         "configured_sample_rate": SAMPLE_RATE,
         "blocks_expected": len(prepared),
-        "blocks_completed": 0,
-        "blocks": [],
-        "quality_warnings": [],
-        "total_duration_seconds": 0.0,
+        "blocks_completed": len(cached_rows),
+        "blocks_reused": len(cached_rows),
+        "blocks_generated": 0,
+        "blocks": cached_rows,
+        "quality_warnings": list(previous_manifest.get("quality_warnings", [])) if cached_rows else [],
+        "total_duration_seconds": round(sum(float(row.get("duration_seconds", 0)) for row in cached_rows), 3),
         "elapsed_seconds": None,
-    }
+    })
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    if len(cached_rows) == len(prepared):
+        manifest["status"] = "complete"
+        manifest["elapsed_seconds"] = 0.0
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        log.info("Kokoro resume: reused all %d valid WAV blocks", len(cached_rows))
+        return manifest
 
     try:
         threads = int(os.getenv("KOKORO_THREADS", "2"))
@@ -319,6 +508,24 @@ def synthesize_kokoro(settings: Any, prepared: list[tuple[str, dict[str, Any], s
             "model_license": "OpenRAIL (zaakirio/kokoro-ru; verify pinned revision)",
             "stress_config_rule_count": len(runtime.stress_config["context_rules"]),
         })
+
+        runtime_signature = _audio_cache_runtime_fingerprint(
+            settings,
+            runtime.stress_config_path,
+            stress_config_sha256(runtime.stress_config_path),
+            NORMALIZER_VERSION,
+            normalizer_backend(),
+            runtime=runtime,
+            allow_incomplete_assets=True,
+        )
+
+        if runtime_signature is None:
+            raise RuntimeError(
+                "Не удалось проверить полный fingerprint файлов и зависимостей Kokoro"
+            )
+
+        manifest.update(runtime_signature)
+
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as exc:
         manifest["status"] = "failed"
@@ -329,7 +536,10 @@ def synthesize_kokoro(settings: Any, prepared: list[tuple[str, dict[str, Any], s
 
     try:
         safe_names: set[str] = set()
+        cached_ids = set(cached_by_id)
         for index, (block_id, block, source_text, normalized_text) in enumerate(prepared, start=1):
+            if block_id in cached_ids:
+                continue
             block_started = time.perf_counter()
             chunks = _phonemize_in_chunks(runtime.g2p, normalized_text, block_id)
             audio_parts: list[Any] = []
@@ -400,6 +610,8 @@ def synthesize_kokoro(settings: Any, prepared: list[tuple[str, dict[str, Any], s
                 "synthesis_chunks": len(chunks),
                 "ipa_chunk_lengths": ipa_lengths,
                 "chunk_pause_seconds": CHUNK_PAUSE_SECONDS if len(chunks) > 1 else 0.0,
+                "speed": speed,
+                "file_sha256": sha256_file(wav_path),
             }
             manifest["blocks"].append(row)
             manifest["blocks_completed"] = len(manifest["blocks"])
@@ -414,8 +626,12 @@ def synthesize_kokoro(settings: Any, prepared: list[tuple[str, dict[str, Any], s
                 elapsed / max(info["duration_seconds"], 0.001),
             )
 
+        by_id = {row["id"]: row for row in manifest["blocks"]}
+        manifest["blocks"] = [by_id[block_id] for block_id, *_ in prepared]
         if [row["id"] for row in manifest["blocks"]] != [item[0] for item in prepared]:
             raise RuntimeError("Внутренняя ошибка: manifest не соответствует порядку блоков сценария")
+        manifest["blocks_reused"] = len(cached_ids)
+        manifest["blocks_generated"] = len(prepared) - len(cached_ids)
         manifest["status"] = "complete"
         manifest["elapsed_seconds"] = round(time.perf_counter() - started, 3)
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

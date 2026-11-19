@@ -12,7 +12,9 @@ from .llm_structured import StructuredLLMRouter
 from .models import StoryboardResponse
 
 
-SYSTEM_PROMPT = """Ты — редактор-сценарист русскоязычного технологического видеоканала.
+SYSTEM_PROMPT = """Ты — редактор-сценарист русскоязычного видеоканала с широкой тематикой.
+Канал выпускает содержательные ролики на актуальные и интересные темы из самых разных сфер: общество, экономика, история, наука, технологии, спорт, культура, развлечения, автомобили, путешествия, природа и другие области.
+Не своди тематику канала к ИИ или технологиям. При работе с конкретным сценарием ориентируйся на его содержание, а не на перечисленные примеры.
 Задача — разбить текст диктора на последовательность смысловых сцен.
 
 КРИТИЧЕСКИЕ ПРАВИЛА:
@@ -96,10 +98,11 @@ def validate_storyboard_coverage(script: dict[str, Any], storyboard: dict[str, A
     return []
 
 
-def create_storyboard(settings: Any, script_path: Path, output_path: Path) -> dict[str, Any]:
+def create_storyboard(settings: Any, script_path: Path, output_path: Path, *, journal=None) -> dict[str, Any]:
     script = read_json(script_path)
     blocks = script_blocks(script)
-    llm = StructuredLLMRouter(settings)
+    llm = (StructuredLLMRouter(settings, journal=journal) if journal is not None
+           else StructuredLLMRouter(settings))
     scenes: list[dict[str, Any]] = []
     counter = 1
     for block in blocks:
@@ -108,10 +111,17 @@ def create_storyboard(settings: Any, script_path: Path, output_path: Path) -> di
             "Верни JSON с массивом segments. Сохрани весь исходный текст дословно.\n"
             f"ИСХОДНЫЙ voice_text:\n{block['voice_text']}"
         )
+        task_id = f"storyboard:block:{block['id']}"
         draft = llm.complete(StoryboardResponse, SYSTEM_PROMPT, prompt,
-                             temperature=0.18, max_tokens=5000)
+                             temperature=0.18, max_tokens=5000,
+                             task_id=task_id, stage="storyboard")
         segments = [x.voice_text for x in draft.segments]
-        validate_block_coverage(block["voice_text"], segments, block["id"])
+        try:
+            validate_block_coverage(block["voice_text"], segments, block["id"])
+        except ValueError as exc:
+            if journal is not None:
+                journal.reject_task(task_id, str(exc))
+            raise
         for segment in draft.segments:
             scenes.append({
                 "id": f"s_{counter:03d}",
