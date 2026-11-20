@@ -763,7 +763,9 @@ class SceneDirection(StrictModel):
 class VisualStoryPlan(StrictModel):
     """Pass 1: whole-video directing decisions, before any scene composition plans."""
 
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.1"] = "1.1"
+    visual_thesis: str = Field(min_length=20, max_length=500)
+    arc_summary: str = Field(min_length=30, max_length=1200)
     style: StyleContract
     arc: list[str] = Field(min_length=1)
     motifs: list[Motif] = Field(default_factory=list)
