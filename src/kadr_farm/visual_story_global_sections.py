@@ -39,7 +39,7 @@ from .visual_story_prompts import (
 log = logging.getLogger("kadr_farm.visual_story_global_sections")
 
 SECTIONS_ALGORITHM_VERSION = "global-sections-v1"
-OUTLINE_PROMPT_VERSION = "global-outline-v1"
+OUTLINE_PROMPT_VERSION = "global-outline-v2"
 PART_PROMPT_VERSION = "global-part-v1"
 OUTLINE_TASK_ID = f"visual_story:global_sections:outline:{SECTIONS_ALGORITHM_VERSION}"
 OUTLINE_STAGE = "visual_story_global_sections:outline"
@@ -98,8 +98,10 @@ OUTLINE_SYSTEM_PROMPT = r"""Ты — главный визуальный реж�
 СНАЧАЛА ОСМЫСЛИ РОЛИК ЦЕЛИКОМ:
 - Определи единую visual_thesis и последовательное развитие идеи в arc_summary.
 - Выбери функциональный стиль и палитру, подходящие теме.
-- Определи небольшое число содержательных повторяющихся визуальных мотивов. Укажи
-  first_scene и все реальные returns_in; не добавляй мотив только ради формальности.
+- Определи содержательные повторяющиеся визуальные мотивы, если они естественно
+  усиливают развитие истории. Укажи first_scene и все реальные returns_in.
+  Если сквозных мотивов нет, верни пустой список motifs; не придумывай повторения
+  ради формального требования.
 - Построй arc как упорядоченную подпоследовательность scene_id от первой сцены до последней.
 
 ЗАТЕМ РАЗДЕЛИ РОЛИК НА ЧАСТИ:
@@ -229,12 +231,14 @@ def validate_global_story_outline(
     if arc_indexes != sorted(arc_indexes) or len(arc_indexes) != len(set(arc_indexes)):
         raise ValueError("outline arc must be an ordered, duplicate-free subsequence")
 
-    if len(expected) >= 3 and not any(motif.returns_in for motif in parsed.motifs):
-        raise ValueError("a multi-scene outline must define at least one genuinely recurring visual motif")
     motif_ids = [motif.motif_id for motif in parsed.motifs]
     if len(motif_ids) != len(set(motif_ids)):
         raise ValueError("outline contains duplicate motif_id")
     for motif in parsed.motifs:
+        if not motif.returns_in:
+            raise ValueError(
+                f"motif {motif.motif_id} must have at least one genuine return"
+            )
         appearances = [motif.first_scene, *motif.returns_in]
         if any(scene_id not in scene_order for scene_id in appearances):
             raise ValueError(f"motif {motif.motif_id} references an unknown scene")
@@ -401,7 +405,7 @@ def assemble_global_story_plan(
     })
     return validate_global_plan_coverage(
         storyboard, combined, minimum_developing_share=0.5,
-        require_recurring_motif=True,
+        require_recurring_motif=False,
     )
 
 

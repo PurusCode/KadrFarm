@@ -95,10 +95,17 @@ def test_outline_requires_exact_scene_coverage_and_order():
     broken["parts"][1]["scene_ids"] = ["s_004", "s_003"]
     with pytest.raises(ValueError, match="exactly once"):
         validate_global_story_outline(storyboard, broken)
-    no_returning_motif = json.loads(json.dumps(outline))
-    no_returning_motif["motifs"][0]["returns_in"] = []
-    with pytest.raises(ValueError, match="recurring visual motif"):
-        validate_global_story_outline(storyboard, no_returning_motif)
+    no_motifs = json.loads(json.dumps(outline))
+    no_motifs["motifs"] = []
+    parsed_without_motifs = validate_global_story_outline(
+        storyboard, no_motifs
+    )
+    assert parsed_without_motifs.motifs == []
+
+    non_recurring_motif = json.loads(json.dumps(outline))
+    non_recurring_motif["motifs"][0]["returns_in"] = []
+    with pytest.raises(ValueError, match="genuine return"):
+        validate_global_story_outline(storyboard, non_recurring_motif)
 
 
 def test_part_validation_enforces_whole_story_links_and_global_motifs():
@@ -139,6 +146,32 @@ def test_part_request_carries_global_outline_previous_handoff_and_next_part():
     assert "part_02" in request.user_prompt
     assert "part_01" in request.user_prompt
     assert "s_003" in request.user_prompt and "s_004" in request.user_prompt
+
+
+def test_assembly_accepts_global_story_without_artificial_motifs():
+    storyboard = _storyboard()
+    outline_data = _outline()
+    outline_data["motifs"] = []
+    outline = validate_global_story_outline(storyboard, outline_data)
+
+    first, second = _plans()
+    first = first.model_copy(deep=True)
+    second = second.model_copy(deep=True)
+
+    for plan in (first, second):
+        for scene in plan.scenes:
+            scene.motif_ids = []
+
+    final = assemble_global_story_plan(
+        storyboard, outline, [first, second]
+    )
+
+    assert final.motifs == []
+    assert len(final.scenes) == 4
+    assert sum(
+        scene.develops_scene_id is not None
+        for scene in final.scenes
+    ) >= 2
 
 
 def test_assembly_requires_all_parts_and_builds_one_valid_visual_story_plan():
