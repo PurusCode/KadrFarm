@@ -1,0 +1,288 @@
+{
+  "schema_version": "2.0",
+  "title": "Демонстрация визуальных эффектов KadrFarm",
+  "width": 1280,
+  "height": 720,
+  "fps": 25,
+  "background": "#101827",
+  "style": {
+    "palette": [
+      "#101827",
+      "#263449",
+      "#F4B860",
+      "#3E9C91"
+    ],
+    "font_family": "Arial",
+    "tone": "dark"
+  },
+  "speech_units": [
+    {
+      "unit_id": "u01",
+      "text": "Сначала появляется вопрос.",
+      "char_start": 0,
+      "char_end": 26
+    },
+    {
+      "unit_id": "u02",
+      "text": " Затем три элемента соединяются в систему.",
+      "char_start": 26,
+      "char_end": 68
+    }
+  ],
+  "shots": [
+    {
+      "shot_id": "s01",
+      "editorial_purpose": "Поставить вопрос",
+      "visual_summary": "Крупный заголовок плавно появляется на тёмном фоне",
+      "speech_unit_ids": [
+        "u01"
+      ],
+      "objects": [
+        {
+          "object_id": "background",
+          "kind": "shape",
+          "role": "background",
+          "layer": {
+            "z_index": 0,
+            "region": "background",
+            "x": 0.5,
+            "y": 0.5,
+            "width": 1.0,
+            "height": 1.0
+          },
+          "content": {
+            "shape_type": "rectangle"
+          },
+          "appearance": {
+            "fill": "#101827",
+            "stroke": "#101827"
+          }
+        },
+        {
+          "object_id": "headline",
+          "kind": "text",
+          "role": "typography",
+          "initial_state": "hidden",
+          "layer": {
+            "z_index": 2,
+            "region": "center",
+            "x": 0.5,
+            "y": 0.5,
+            "width": 0.9,
+            "height": 0.4
+          },
+          "content": {
+            "text": "КАК УСТРОЕНА СИСТЕМА?",
+            "font_size": 64,
+            "alignment": "center"
+          },
+          "appearance": {
+            "color": "#FFFFFF",
+            "stroke_width": 1,
+            "stroke_color": "#101827"
+          }
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e01",
+          "target_id": "headline",
+          "action": "fade_in",
+          "anchor": {
+            "unit_id": "u01",
+            "offset_sec": 0.2
+          },
+          "duration_sec": 0.8
+        },
+        {
+          "event_id": "e02",
+          "target_id": "headline",
+          "action": "scale",
+          "anchor": {
+            "unit_id": "u01",
+            "offset_sec": 0.2
+          },
+          "duration_sec": 0.8,
+          "params": {
+            "factor": 1.08
+          }
+        }
+      ]
+    },
+    {
+      "shot_id": "s02",
+      "editorial_purpose": "Показать взаимодействие элементов",
+      "visual_summary": "Три самостоятельных блока соединяются стрелками в единую систему",
+      "speech_unit_ids": [
+        "u02"
+      ],
+      "relation_to_previous": "extends",
+      "objects": [
+        {
+          "object_id": "block_input",
+          "kind": "shape",
+          "role": "focal",
+          "layer": {
+            "z_index": 1,
+            "region": "left",
+            "x": 0.18,
+            "y": 0.45,
+            "width": 0.22,
+            "height": 0.22
+          },
+          "content": {
+            "shape_type": "rounded_rectangle",
+            "radius": 24
+          },
+          "appearance": {
+            "fill": "#263449",
+            "stroke": "#F4B860",
+            "stroke_width": 5
+          }
+        },
+        {
+          "object_id": "block_process",
+          "kind": "shape",
+          "role": "focal",
+          "layer": {
+            "z_index": 1,
+            "region": "center",
+            "x": 0.5,
+            "y": 0.45,
+            "width": 0.22,
+            "height": 0.22
+          },
+          "content": {
+            "shape_type": "rounded_rectangle",
+            "radius": 24
+          },
+          "appearance": {
+            "fill": "#263449",
+            "stroke": "#3E9C91",
+            "stroke_width": 5
+          }
+        },
+        {
+          "object_id": "block_result",
+          "kind": "shape",
+          "role": "focal",
+          "layer": {
+            "z_index": 1,
+            "region": "right",
+            "x": 0.82,
+            "y": 0.45,
+            "width": 0.22,
+            "height": 0.22
+          },
+          "content": {
+            "shape_type": "rounded_rectangle",
+            "radius": 24
+          },
+          "appearance": {
+            "fill": "#263449",
+            "stroke": "#6688C9",
+            "stroke_width": 5
+          }
+        },
+        {
+          "object_id": "labels",
+          "kind": "text",
+          "role": "typography",
+          "layer": {
+            "z_index": 3,
+            "region": "bottom",
+            "x": 0.5,
+            "y": 0.72,
+            "width": 0.9,
+            "height": 0.18
+          },
+          "content": {
+            "text": "ВХОД       ОБРАБОТКА       РЕЗУЛЬТАТ",
+            "font_size": 34,
+            "alignment": "center"
+          },
+          "appearance": {
+            "color": "#FFFFFF"
+          }
+        },
+        {
+          "object_id": "arrow_one",
+          "kind": "shape",
+          "role": "annotation",
+          "initial_state": "hidden",
+          "layer": {
+            "z_index": 2,
+            "region": "center",
+            "x": 0.34,
+            "y": 0.45,
+            "width": 0.12,
+            "height": 0.02
+          },
+          "content": {
+            "shape_type": "arrow"
+          },
+          "appearance": {
+            "stroke": "#F4B860",
+            "stroke_width": 8
+          }
+        },
+        {
+          "object_id": "arrow_two",
+          "kind": "shape",
+          "role": "annotation",
+          "initial_state": "hidden",
+          "layer": {
+            "z_index": 2,
+            "region": "center",
+            "x": 0.66,
+            "y": 0.45,
+            "width": 0.12,
+            "height": 0.02
+          },
+          "content": {
+            "shape_type": "arrow"
+          },
+          "appearance": {
+            "stroke": "#F4B860",
+            "stroke_width": 8
+          }
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e03",
+          "target_id": "arrow_one",
+          "action": "draw",
+          "anchor": {
+            "unit_id": "u02",
+            "offset_sec": 0.5
+          },
+          "duration_sec": 0.8
+        },
+        {
+          "event_id": "e04",
+          "target_id": "arrow_two",
+          "action": "draw",
+          "anchor": {
+            "unit_id": "u02",
+            "offset_sec": 1.5
+          },
+          "duration_sec": 0.8
+        },
+        {
+          "event_id": "e05",
+          "target_id": "block_result",
+          "action": "highlight",
+          "anchor": {
+            "unit_id": "u02",
+            "offset_sec": 2.5
+          },
+          "duration_sec": 0.7,
+          "params": {
+            "color": "#6688C9"
+          }
+        }
+      ]
+    }
+  ]
+}
