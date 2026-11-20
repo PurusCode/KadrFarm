@@ -10,7 +10,10 @@ import argparse
 import hashlib
 import json
 import logging
+import math
 import os
+import time
+from contextlib import contextmanager
 from copy import copy
 from dataclasses import replace
 from pathlib import Path
@@ -33,6 +36,97 @@ from .visual_story_prompts import (
 
 
 log = logging.getLogger("kadr_farm.visual_story_global_pilot")
+
+
+LOCK_WAIT_TIMEOUT_SECONDS = 3600.0
+
+
+@contextmanager
+def _pilot_directory_lock(
+    output: Path,
+    *,
+    timeout_seconds: float = LOCK_WAIT_TIMEOUT_SECONDS,
+):
+    """Exclusive cross-process lock with a finite acquisition timeout."""
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not math.isfinite(float(timeout_seconds))
+        or timeout_seconds <= 0
+    ):
+        raise ValueError("lock timeout must be a finite positive number")
+
+    timeout = float(timeout_seconds)
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+
+    lock_path = output / ".global_director_pilot.lock"
+    handle = lock_path.open("a+b")
+    locked = False
+
+    try:
+        # Ensure that byte zero exists for Windows byte-range locking.
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+
+        started = time.monotonic()
+
+        while True:
+            try:
+                handle.seek(0)
+
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(
+                        handle.fileno(),
+                        msvcrt.LK_NBLCK,
+                        1,
+                    )
+                else:
+                    import fcntl
+                    fcntl.flock(
+                        handle.fileno(),
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+
+                locked = True
+                break
+
+            except OSError as exc:
+                remaining = timeout - (time.monotonic() - started)
+
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f"Could not acquire Global Director output lock "
+                        f"within {timeout:g} seconds: {lock_path}"
+                    ) from exc
+
+                time.sleep(min(0.1, remaining))
+
+        try:
+            yield
+        finally:
+            if locked:
+                handle.seek(0)
+
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(
+                        handle.fileno(),
+                        msvcrt.LK_UNLCK,
+                        1,
+                    )
+                else:
+                    import fcntl
+                    fcntl.flock(
+                        handle.fileno(),
+                        fcntl.LOCK_UN,
+                    )
+
+    finally:
+        handle.close()
 
 
 def pin_one_provider(settings: Any, provider_name: str, timeout_seconds: float) -> Any:
@@ -145,7 +239,7 @@ def _request_preview(request: Any, identity: dict[str, str], timeout_seconds: fl
     }
 
 
-def run_global_pilot(
+def _run_global_pilot_unlocked(
     *,
     storyboard_path: Path,
     out_dir: Path,
@@ -280,6 +374,34 @@ def run_global_pilot(
         else:
             journal.fail_stage("startup", exc)
         raise
+
+
+
+def run_global_pilot(
+    *,
+    storyboard_path: Path,
+    out_dir: Path,
+    provider_name: str = "primary",
+    timeout_seconds: float = 300.0,
+    temperature: float = DEFAULT_GLOBAL_TEMPERATURE,
+    max_tokens: int = DEFAULT_GLOBAL_MAX_TOKENS,
+    execute: bool = False,
+) -> dict[str, Any]:
+    output = Path(out_dir).expanduser().resolve()
+    output.mkdir(parents=True, exist_ok=True)
+
+    # Both modes write to the output directory:
+    # dry-run writes the preview, execute writes recovery and final artifacts.
+    with _pilot_directory_lock(output):
+        return _run_global_pilot_unlocked(
+            storyboard_path=storyboard_path,
+            out_dir=output,
+            provider_name=provider_name,
+            timeout_seconds=timeout_seconds,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            execute=execute,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
