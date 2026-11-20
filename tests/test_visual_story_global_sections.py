@@ -216,6 +216,82 @@ def _response_payloads():
             first.model_dump_json(), second.model_dump_json()]
 
 
+def test_outline_only_stops_after_outline_and_resume_reuses_outline_checkpoint(
+    tmp_path, monkeypatch
+):
+    import kadr_farm.llm_structured as llm_module
+    import kadr_farm.visual_story_global_sections as sections
+
+    storyboard_path = tmp_path / "storyboard.json"
+    storyboard_path.write_text(
+        json.dumps(_storyboard(), ensure_ascii=False), encoding="utf-8"
+    )
+    output = tmp_path / "outline-only-pilot"
+
+    payloads = _response_payloads()
+    clients = [_Client(payloads[:1]), _Client(payloads[1:])]
+    created = []
+
+    class FakeLLMRouter:
+        def __init__(self, settings, *, honor_provider_timeouts=False):
+            assert honor_provider_timeouts is True
+            assert len(settings.providers) == 1
+            assert settings.providers[0].name == "primary"
+            self.client = clients[len(created)]
+            created.append(self.client)
+            self.clients = [("primary", "model-a", self.client)]
+
+    monkeypatch.setattr(llm_module, "LLMRouter", FakeLLMRouter)
+    monkeypatch.setattr(
+        sections,
+        "load_settings",
+        lambda: SimpleNamespace(providers=[
+            ProviderConfig("primary", "https://primary.example/v1", "unused", "model-a", 300.0),
+            ProviderConfig("secondary", "http://localhost:11434/v1", "unused2", "model-b", 300.0),
+        ]),
+    )
+
+    outline_report = sections.run_global_sections_pilot(
+        storyboard_path=storyboard_path,
+        out_dir=output,
+        provider_name="primary",
+        timeout_seconds=30,
+        execute=True,
+        outline_only=True,
+    )
+
+    assert outline_report["status"] == "outline_complete"
+    assert outline_report["part_count"] == 2
+    assert (output / "global_story_outline.json").is_file()
+    assert (output / "global_story_outline_report.json").is_file()
+    assert not (output / "parts" / "part_01.json").exists()
+    assert not (output / "visual_story_plan.json").exists()
+    assert len(clients[0].chat.completions.calls) == 1
+
+    state_path = output / "recovery" / "production_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["run_status"] == "outline_complete"
+    assert state["current_stage"] is None
+    assert state["tasks"][sections.OUTLINE_TASK_ID]["status"] == "completed"
+
+    # The second invocation must reuse the saved outline and request only parts.
+    final_report = sections.run_global_sections_pilot(
+        storyboard_path=storyboard_path,
+        out_dir=output,
+        provider_name="primary",
+        timeout_seconds=30,
+        execute=True,
+    )
+
+    assert final_report["status"] == "complete"
+    assert final_report["scene_count"] == 4
+    assert final_report["part_count"] == 2
+    assert len(clients[1].chat.completions.calls) == 2
+    assert (output / "parts" / "part_01.json").is_file()
+    assert (output / "parts" / "part_02.json").is_file()
+    assert (output / "visual_story_plan.json").is_file()
+
+
 def test_runner_resumes_after_part_failure_and_reuses_completed_checkpoints(tmp_path, monkeypatch):
     import kadr_farm.llm_structured as llm_module
     import kadr_farm.visual_story_global_sections as sections

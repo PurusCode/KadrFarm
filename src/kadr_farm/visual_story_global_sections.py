@@ -461,6 +461,7 @@ def run_global_sections_pilot(
     outline_max_tokens: int = DEFAULT_OUTLINE_MAX_TOKENS,
     part_max_tokens: int = DEFAULT_PART_MAX_TOKENS,
     execute: bool = False,
+    outline_only: bool = False,
 ) -> dict[str, Any]:
     source = Path(storyboard_path).expanduser().resolve()
     output = Path(out_dir).expanduser().resolve()
@@ -493,6 +494,7 @@ def run_global_sections_pilot(
             schema_text = _json(_schema_payload(GlobalStoryOutline))
             preview = {
                 "mode": "dry_run",
+                "execution_scope": "outline_only" if outline_only else "outline_and_parts",
                 "strategy": SECTIONS_ALGORITHM_VERSION,
                 "provider_identity": identity,
                 "timeout_seconds": float(timeout_seconds),
@@ -513,6 +515,7 @@ def run_global_sections_pilot(
             _atomic_write_json(output / "global_sections_request_preview.json", preview)
             return {
                 "mode": "dry_run", "strategy": SECTIONS_ALGORITHM_VERSION,
+                "execution_scope": "outline_only" if outline_only else "outline_and_parts",
                 "scene_count": len(storyboard.get("scenes", [])),
                 "provider": identity, "timeout_seconds": float(timeout_seconds),
                 "preview_path": str((output / "global_sections_request_preview.json").resolve()),
@@ -564,6 +567,36 @@ def run_global_sections_pilot(
                 "part_count": len(outline.parts),
                 "part_scene_counts": {part.part_id: len(part.scene_ids) for part in outline.parts},
             })
+
+            if outline_only:
+                outline_report = {
+                    "status": "outline_complete",
+                    "human_review_required": True,
+                    "strategy": SECTIONS_ALGORITHM_VERSION,
+                    "outline_prompt_version": OUTLINE_PROMPT_VERSION,
+                    "scene_count": len(storyboard["scenes"]),
+                    "part_count": len(outline.parts),
+                    "part_scene_counts": {
+                        part.part_id: len(part.scene_ids) for part in outline.parts
+                    },
+                    "visual_thesis": outline.visual_thesis,
+                    "arc_summary": outline.arc_summary,
+                    "provider_identity": identity,
+                    "storyboard_file_sha256": source_sha,
+                    "outline_path": str(outline_path.resolve()),
+                    "automatic_provider_fallback": False,
+                    "next_step": (
+                        "Review global_story_outline.json. To generate detailed part "
+                        "directions, rerun with the same --out and omit --outline-only."
+                    ),
+                }
+                outline_report_path = output / "global_story_outline_report.json"
+                _atomic_write_json(outline_report_path, outline_report)
+                journal.finish_run(
+                    status="outline_complete",
+                    report_path=str(outline_report_path.resolve()),
+                )
+                return outline_report
 
             completed_plans: list[PartDirectionPlan] = []
             parts_dir = output / "parts"
@@ -653,6 +686,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--outline-max-tokens", type=int, default=DEFAULT_OUTLINE_MAX_TOKENS)
     parser.add_argument("--part-max-tokens", type=int, default=DEFAULT_PART_MAX_TOKENS)
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument(
+        "--outline-only", action="store_true",
+        help="Execute Global Outline only; save it and stop before part requests.",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -662,6 +699,7 @@ def main(argv: list[str] | None = None) -> int:
             provider_name=args.provider, timeout_seconds=args.timeout_seconds,
             temperature=args.temperature, outline_max_tokens=args.outline_max_tokens,
             part_max_tokens=args.part_max_tokens, execute=args.execute,
+            outline_only=args.outline_only,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
