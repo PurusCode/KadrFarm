@@ -22,7 +22,9 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .visual_professional_assets_v2 import ResolvedMedia
+from .visual_professional_layout_v2 import AUTOFIT_SCRIPT, build_layout_variants
 from .visual_story_v2 import Shot, VisualEvent, VisualObject, VisualStoryPlan
+from .visual_professional_qc_v2 import evaluate_browser_geometry, validate_shot_event_contract
 
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -440,8 +442,12 @@ def _object_inner(obj: VisualObject, assets: dict[str, ResolvedMedia], palette: 
         value = obj.content.get("value", 0)
         label = _esc(obj.content.get("label", ""))
         suffix = _esc(obj.content.get("suffix", ""))
+        # Respect the director-authored size. AutoFit may reduce it only when
+        # Chromium proves that the complete counter cannot fit its layer.
+        value_size = _int(obj.content.get("font_size"), 96, 24, 240)
         return (
-            f'<div class="counter"><div class="counter-value" data-counter-value="{_esc(value)}">{_esc(value)}{suffix}</div>'
+            f'<div class="counter" style="--counter-value-size:{value_size}px">'
+            f'<div class="counter-value" data-counter-value="{_esc(value)}">{_esc(value)}{suffix}</div>'
             f'<div class="counter-label">{label}</div></div>'
         )
     if obj.kind == "formula":
@@ -498,12 +504,34 @@ def _ease(event: VisualEvent) -> str:
 
 
 def _event_css(shot: Shot, event_offsets: dict[str, float] | None = None) -> tuple[str, list[dict[str, Any]]]:
+    validate_shot_event_contract(shot, event_offsets)
     keyframes: list[str] = []
     animations: dict[str, list[str]] = {}
-    row_rules: list[str] = []
+    draw_path_animations: dict[str, list[str]] = {}
+    draw_mark_animations: dict[str, list[str]] = {}
+    row_animations: dict[tuple[str, int], list[str]] = {}
     scripts: list[dict[str, Any]] = []
     object_map = {obj.object_id: obj for obj in shot.objects}
-    for index, event in enumerate(shot.events):
+
+    ordered_events = sorted(
+        enumerate(shot.events),
+        key=lambda pair: (
+            max(0.0, float((event_offsets or {}).get(pair[1].event_id, pair[1].anchor.offset_sec))),
+            pair[0],
+        ),
+    )
+    current_positions: dict[str, tuple[float, float]] = {}
+    current_scales: dict[str, float] = {}
+    seen_fill_properties: set[tuple[str, str]] = set()
+
+    def fill_mode(target_id: str, property_key: str) -> str:
+        key = (target_id, property_key)
+        if key in seen_fill_properties:
+            return "forwards"
+        seen_fill_properties.add(key)
+        return "both"
+
+    for index, event in ordered_events:
         name = f"kf_{index}"
         selector = f'[data-object-id="{_esc(event.target_id)}"]'
         delay = max(0.0, float((event_offsets or {}).get(event.event_id, event.anchor.offset_sec)))
@@ -513,48 +541,80 @@ def _event_css(shot: Shot, event_offsets: dict[str, float] | None = None) -> tup
         animation = None
         if event.action == "fade_in":
             keyframes.append(f"@keyframes {name}{{from{{opacity:0;visibility:visible}}to{{opacity:1;visibility:visible}}}}")
-            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s both"
+            mode = fill_mode(event.target_id, "opacity_visibility")
+            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s {mode}"
         elif event.action == "fade_out":
             keyframes.append(f"@keyframes {name}{{from{{opacity:1}}to{{opacity:0}}}}")
-            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s both"
+            mode = fill_mode(event.target_id, "opacity_visibility")
+            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s {mode}"
         elif event.action == "appear":
             keyframes.append(f"@keyframes {name}{{0%{{opacity:0;visibility:hidden}}1%{{visibility:visible}}100%{{opacity:1;visibility:visible}}}}")
-            animation = f"{name} {duration:.4f}s steps(1,end) {delay:.4f}s both"
+            mode = fill_mode(event.target_id, "opacity_visibility")
+            animation = f"{name} {duration:.4f}s steps(1,end) {delay:.4f}s {mode}"
         elif event.action == "move":
             target_obj = object_map[event.target_id]
-            x0 = _number(target_obj.layer.x, .5, 0, 1) * 100
-            y0 = _number(target_obj.layer.y, .5, 0, 1) * 100
+            if event.target_id not in current_positions:
+                current_positions[event.target_id] = (
+                    _number(target_obj.layer.x, .5, 0, 1) * 100,
+                    _number(target_obj.layer.y, .5, 0, 1) * 100,
+                )
+            x0, y0 = current_positions[event.target_id]
             x1 = _number(p.get("x"), .5, 0, 1) * 100
             y1 = _number(p.get("y"), .5, 0, 1) * 100
             keyframes.append(f"@keyframes {name}{{from{{left:{x0:.4f}%;top:{y0:.4f}%}}to{{left:{x1:.4f}%;top:{y1:.4f}%}}}}")
-            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s both"
+            current_positions[event.target_id] = (x1, y1)
+            mode = fill_mode(event.target_id, "position")
+            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s {mode}"
         elif event.action == "scale":
             factor = _number(p.get("factor"), 1.0, .1, 4)
-            keyframes.append(f"@keyframes {name}{{from{{scale:1}}to{{scale:{factor:.4f}}}}}")
-            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s both"
+            from_factor = current_scales.get(event.target_id, 1.0)
+            keyframes.append(f"@keyframes {name}{{from{{scale:{from_factor:.4f}}}to{{scale:{factor:.4f}}}}}")
+            current_scales[event.target_id] = factor
+            mode = fill_mode(event.target_id, "scale")
+            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s {mode}"
         elif event.action == "highlight":
             color = _color(p.get("color"), palette_accent_placeholder())
             keyframes.append(f"@keyframes {name}{{0%,100%{{filter:drop-shadow(0 0 0 transparent)}}35%,75%{{filter:drop-shadow(0 0 24px {color})}}}}")
-            animation = f"{name} {duration:.4f}s ease-in-out {delay:.4f}s both"
+            mode = fill_mode(event.target_id, "filter")
+            animation = f"{name} {duration:.4f}s ease-in-out {delay:.4f}s {mode}"
         elif event.action == "draw":
             keyframes.append(
                 f"@keyframes {name}{{from{{clip-path:inset(100% 0 0 0)}}to{{clip-path:inset(0 0 0 0)}}}}"
-                f"@keyframes draw_{name}{{to{{stroke-dashoffset:0}}}}"
+                f"@keyframes draw_{name}{{from{{stroke-dashoffset:1000}}to{{stroke-dashoffset:0}}}}"
                 f"@keyframes bar_{name}{{from{{transform:scaleY(0)}}to{{transform:scaleY(1)}}}}"
             )
-            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s both"
-            keyframes.append(
-                f"{selector} .draw-path{{stroke-dasharray:1000;stroke-dashoffset:1000;"
-                f"animation:draw_{name} {duration:.4f}s {easing} {delay:.4f}s both;}}"
-                f"{selector} .draw-mark{{transform-box:fill-box;transform-origin:bottom;"
-                f"animation:bar_{name} .55s {easing} calc({delay:.4f}s + var(--mark-delay,0s)) both;}}"
+            clip_mode = fill_mode(event.target_id, "clip-path")
+            animation = f"{name} {duration:.4f}s {easing} {delay:.4f}s {clip_mode}"
+            path_mode = fill_mode(event.target_id, "draw-path")
+            draw_path_animations.setdefault(event.target_id, []).append(
+                f"draw_{name} {duration:.4f}s {easing} {delay:.4f}s {path_mode}"
+            )
+            target_obj = object_map[event.target_id]
+            max_mark_delay = 0.0
+            if target_obj.kind == "chart" and target_obj.content.get("chart_type") == "bar":
+                series = target_obj.content.get("series") or []
+                series_count = len(series)
+                max_categories = max((len(item.get("values", [])) for item in series), default=0)
+                if max_categories and series_count:
+                    max_mark_delay = max(
+                        i * 0.08 + si * 0.05
+                        for si in range(series_count)
+                        for i in range(max_categories)
+                    )
+            stagger_scale = 1.0
+            if max_mark_delay > duration * 0.35 and max_mark_delay > 0:
+                stagger_scale = (duration * 0.35) / max_mark_delay
+            mark_mode = fill_mode(event.target_id, "draw-mark")
+            draw_mark_animations.setdefault(event.target_id, []).append(
+                f"bar_{name} max(0.001s,calc({duration:.4f}s - var(--mark-delay,0s)*{stagger_scale:.6f})) "
+                f"{easing} calc({delay:.4f}s + var(--mark-delay,0s)*{stagger_scale:.6f}) {mark_mode}"
             )
         elif event.action == "reveal_row":
             row_index = _int(p.get("row_index"), 0, 0, 1000)
             keyframes.append(f"@keyframes {name}{{from{{opacity:0;transform:translateY(18px)}}to{{opacity:1;transform:translateY(0)}}}}")
-            row_rules.append(
-                f"{selector} [data-row-index=\"{row_index}\"]{{opacity:0;"
-                f"animation:{name} {duration:.4f}s {easing} {delay:.4f}s both;}}"
+            row_mode = fill_mode(event.target_id, f"row:{row_index}")
+            row_animations.setdefault((event.target_id, row_index), []).append(
+                f"{name} {duration:.4f}s {easing} {delay:.4f}s {row_mode}"
             )
         elif event.action in {"count_up", "update_text"}:
             scripts.append({
@@ -566,11 +626,29 @@ def _event_css(shot: Shot, event_offsets: dict[str, float] | None = None) -> tup
             })
         if animation:
             animations.setdefault(event.target_id, []).append(animation)
+
     selector_rules = [
         f'[data-object-id="{_esc(target)}"]{{animation:{", ".join(parts)};}}'
         for target, parts in animations.items()
     ]
-    return "\n".join(keyframes + row_rules + selector_rules), scripts
+    for (target, row_index), parts in row_animations.items():
+        selector = f'[data-object-id="{_esc(target)}"] [data-row-index="{row_index}"]'
+        selector_rules.append(
+            f"{selector}{{opacity:0;animation:{', '.join(parts)};}}"
+        )
+    for target, parts in draw_path_animations.items():
+        selector = f'[data-object-id="{_esc(target)}"]'
+        selector_rules.append(
+            f"{selector} .draw-path{{stroke-dasharray:1000;stroke-dashoffset:1000;"
+            f"animation:{', '.join(parts)};}}"
+        )
+    for target, parts in draw_mark_animations.items():
+        selector = f'[data-object-id="{_esc(target)}"]'
+        selector_rules.append(
+            f"{selector} .draw-mark{{transform-box:fill-box;transform-origin:bottom;"
+            f"animation:{', '.join(parts)};}}"
+        )
+    return "\n".join(keyframes + selector_rules), scripts
 
 
 def palette_accent_placeholder() -> str:
@@ -648,7 +726,7 @@ html.playing *{animation-play-state:running!important}
 .callout-eyebrow{font-size:clamp(13px,1vw,22px);font-weight:800;letter-spacing:.17em;color:var(--accent);text-transform:uppercase;margin-bottom:14px}
 .callout-copy{font-size:clamp(20px,2.3vw,48px);font-weight:720;line-height:1.12;text-wrap:balance}
 .counter{width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;gap:10px}
-.counter-value{font-size:clamp(64px,9vw,190px);font-weight:850;letter-spacing:-.065em;line-height:.95;color:var(--accent);font-variant-numeric:tabular-nums}
+.counter-value{font-size:var(--counter-value-size,clamp(64px,9vw,190px));font-weight:850;letter-spacing:-.065em;line-height:.95;color:var(--accent);font-variant-numeric:tabular-nums}
 .counter-label{font-size:clamp(17px,1.8vw,36px);line-height:1.2;color:var(--muted);font-weight:600}
 .formula{width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:24px 34px;border:1px solid rgba(255,255,255,.16);border-radius:20px;background:linear-gradient(135deg,rgba(255,255,255,.08),rgba(255,255,255,.02));box-shadow:0 18px 48px rgba(0,0,0,.22)}
 .formula-expression{font:600 clamp(28px,3.2vw,68px)/1.2 'Cambria Math',Cambria,serif;letter-spacing:.015em;text-align:center}
@@ -786,6 +864,55 @@ def build_shot_html(
     return html_doc, 0.0
 
 
+
+async def _install_asset_routes(page: Any, served_assets: dict[str, Path]) -> None:
+    """Serve only explicitly registered local media and support HTTP byte ranges."""
+    media_bytes: dict[str, bytes] = {}
+
+    async def fulfill_asset(route) -> None:
+        parsed = urlsplit(route.request.url)
+        token = parsed.path.rsplit("/", 1)[-1]
+        media_path = served_assets.get(token)
+        if media_path is None or not media_path.is_file():
+            await route.fulfill(status=404, body=b"not found")
+            return
+        payload = media_bytes.get(token)
+        if payload is None:
+            payload = media_path.read_bytes()
+            media_bytes[token] = payload
+        total = len(payload)
+        range_header = route.request.headers.get("range", "")
+        status = 200
+        start, end = 0, total - 1
+        response_headers = {
+            "Content-Type": mimetypes.guess_type(media_path.name)[0] or "application/octet-stream",
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "no-store",
+        }
+        if range_header.startswith("bytes="):
+            try:
+                left, right = range_header[6:].split(",", 1)[0].split("-", 1)
+                start = int(left) if left else 0
+                end = int(right) if right else total - 1
+                if start < 0 or start >= total or end < start:
+                    raise ValueError("invalid byte range")
+                end = min(end, total - 1)
+                status = 206
+                response_headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+            except ValueError:
+                await route.fulfill(
+                    status=416,
+                    headers={"Content-Range": f"bytes */{total}"},
+                    body=b"",
+                )
+                return
+        body = payload[start:end + 1]
+        response_headers["Content-Length"] = str(len(body))
+        await route.fulfill(status=status, headers=response_headers, body=body)
+
+    await page.route("http://kadrfarm.local/asset/*", fulfill_asset)
+
+
 class ProfessionalBrowserRenderer:
     """Record one HTML-composited shot with Playwright and normalize via FFmpeg."""
 
@@ -810,6 +937,8 @@ class ProfessionalBrowserRenderer:
         height: int,
         duration: float,
         tail_pad_sec: float = 0.75,
+        geometry_report_path: Path | None = None,
+        safe_area_margin: float = 0.04,
     ) -> tuple[Path, float]:
         try:
             from playwright.async_api import async_playwright
@@ -863,52 +992,8 @@ class ProfessionalBrowserRenderer:
                     page_create_started + page_create_finished
                 ) / 2.0
                 page.set_default_timeout(45000)
-                # Media are fulfilled from the whitelisted local cache. This is
-                # independent of browser file:// restrictions and supports Range.
-                media_bytes: dict[str, bytes] = {}
-
-                async def fulfill_asset(route) -> None:
-                    parsed = urlsplit(route.request.url)
-                    token = parsed.path.rsplit("/", 1)[-1]
-                    media_path = served_assets.get(token)
-                    if media_path is None or not media_path.is_file():
-                        await route.fulfill(status=404, body=b"not found")
-                        return
-                    payload = media_bytes.get(token)
-                    if payload is None:
-                        payload = media_path.read_bytes()
-                        media_bytes[token] = payload
-                    total = len(payload)
-                    range_header = route.request.headers.get("range", "")
-                    status = 200
-                    start, end = 0, total - 1
-                    response_headers = {
-                        "Content-Type": mimetypes.guess_type(media_path.name)[0] or "application/octet-stream",
-                        "Accept-Ranges": "bytes",
-                        "Cache-Control": "no-store",
-                    }
-                    if range_header.startswith("bytes="):
-                        try:
-                            left, right = range_header[6:].split(",", 1)[0].split("-", 1)
-                            start = int(left) if left else 0
-                            end = int(right) if right else total - 1
-                            if start < 0 or start >= total or end < start:
-                                raise ValueError("invalid byte range")
-                            end = min(end, total - 1)
-                            status = 206
-                            response_headers["Content-Range"] = f"bytes {start}-{end}/{total}"
-                        except ValueError:
-                            await route.fulfill(
-                                status=416,
-                                headers={"Content-Range": f"bytes */{total}"},
-                                body=b"",
-                            )
-                            return
-                    body = payload[start:end + 1]
-                    response_headers["Content-Length"] = str(len(body))
-                    await route.fulfill(status=status, headers=response_headers, body=body)
-
-                await page.route("http://kadrfarm.local/asset/*", fulfill_asset)
+                # Serve only the explicitly registered local asset allow-list.
+                await _install_asset_routes(page, served_assets)
                 await page.set_content(html_document, wait_until="load")
                 await page.wait_for_function(
                     "window.__KADRFARM_READY__ === true",
@@ -919,6 +1004,21 @@ class ProfessionalBrowserRenderer:
                     raise RuntimeError(
                         "Browser could not decode one or more visual assets: "
                         + ", ".join(media_errors)
+                    )
+                geometry_report = await evaluate_browser_geometry(
+                    page,
+                    safe_area_margin=safe_area_margin,
+                )
+                if geometry_report_path is not None:
+                    geometry_report_path.parent.mkdir(parents=True, exist_ok=True)
+                    geometry_report_path.write_text(
+                        json.dumps(geometry_report, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                if geometry_report.get("errors"):
+                    details = "; ".join(str(item) for item in geometry_report["errors"][:12])
+                    raise RuntimeError(
+                        "Pre-render browser geometry QC failed: " + details
                     )
                 # Do not let CSS delays or video playback elapse while assets/fonts load.
                 capture_offset = max(0.0, time.monotonic() - recording_started)
@@ -944,40 +1044,28 @@ class ProfessionalBrowserRenderer:
                 raise RuntimeError("Playwright did not create a video recording")
             return Path(await video.path()).resolve(), capture_offset
 
-    def render_shot(
+
+
+    def _build_served_document(
         self,
         plan: VisualStoryPlan,
         shot: Shot,
         assets: dict[str, ResolvedMedia],
+        event_offsets: dict[str, float] | None,
         duration_sec: float,
-        output_path: str | Path,
-        work_dir: str | Path | None = None,
-        event_offsets: dict[str, float] | None = None,
-    ) -> Path:
-        if duration_sec <= 0 or not math.isfinite(duration_sec):
-            raise ValueError("duration_sec must be a finite positive value")
-        output_path = Path(output_path).resolve()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        work = Path(work_dir).resolve() if work_dir else output_path.parent / "_professional_render"
-        work.mkdir(parents=True, exist_ok=True)
-        safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", shot.shot_id)
-        html_path = work / f"{safe_id}.html"
-        record_dir = work / f"{safe_id}_record"
-        # The caller passes a measured speech plan; event offsets supplied to
-        # this renderer are already expressed relative to the shot timeline.
-        html_doc, _ = build_shot_html(plan, shot, assets, event_offsets, duration_sec)
-        html_path.write_text(html_doc, encoding="utf-8")
-
-        # Register media and poster files by opaque tokens. Browser requests are
-        # fulfilled by Playwright, so the scene never needs file:// or localhost navigation.
+    ) -> tuple[str, dict[str, Path]]:
+        """Build the exact browser document and the allow-listed media map."""
+        html_document, _ = build_shot_html(
+            plan, shot, assets, event_offsets, duration_sec
+        )
         served_assets: dict[str, Path] = {}
-        served_html = html_doc
         for media in assets.values():
-            token = hashlib.sha256(str(media.path.resolve()).encode("utf-8")).hexdigest()[:24]
+            token = hashlib.sha256(
+                str(media.path.resolve()).encode("utf-8")
+            ).hexdigest()[:24]
             served_assets[token] = media.path.resolve()
-            served_html = served_html.replace(
-                media.as_uri(),
-                f"http://kadrfarm.local/asset/{token}",
+            html_document = html_document.replace(
+                media.as_uri(), f"http://kadrfarm.local/asset/{token}"
             )
 
         def register_posters(obj: VisualObject, depth: int = 0) -> None:
@@ -990,21 +1078,174 @@ class ProfessionalBrowserRenderer:
                     poster_path = Path.cwd() / poster_path
                 poster_path = poster_path.resolve()
                 if poster_path.is_file():
-                    token = hashlib.sha256(str(poster_path).encode("utf-8")).hexdigest()[:24]
+                    token = hashlib.sha256(
+                        str(poster_path).encode("utf-8")
+                    ).hexdigest()[:24]
                     served_assets[token] = poster_path
-                    nonlocal_html[0] = nonlocal_html[0].replace(
-                        poster_path.as_uri(),
-                        f"http://kadrfarm.local/asset/{token}",
+                    nonlocal html_document
+                    html_document = html_document.replace(
+                        poster_path.as_uri(), f"http://kadrfarm.local/asset/{token}"
                     )
             if obj.kind == "group":
                 for child_data in obj.content.get("children", []):
                     register_posters(VisualObject.model_validate(child_data), depth + 1)
 
-        nonlocal_html = [served_html]
         for obj in shot.objects:
             register_posters(obj)
-        served_html = nonlocal_html[0]
+        return html_document, served_assets
 
+    async def _preflight_document(
+        self,
+        html_document: str,
+        served_assets: dict[str, Path],
+        width: int,
+        height: int,
+        variants: list[dict[str, str]],
+        safe_area_margin: float,
+    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        """Run browser-measured AutoFit and geometry QC without recording video."""
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError as exc:
+            raise RuntimeError(
+                "Playwright is required for professional preflight. Install Chromium with: "
+                "python -m playwright install chromium"
+            ) from exc
+
+        async with async_playwright() as playwright:
+            launch_args = ["--force-color-profile=srgb", "--disable-background-timer-throttling"]
+            if hasattr(os, "geteuid") and os.geteuid() == 0:
+                launch_args.extend(["--no-sandbox", "--disable-setuid-sandbox"])
+            launch_options: dict[str, Any] = {"headless": True, "args": launch_args}
+            custom_chromium = os.getenv("KADRFARM_CHROMIUM_PATH", "").strip()
+            if custom_chromium:
+                executable = Path(custom_chromium).expanduser()
+                if not executable.is_file():
+                    raise RuntimeError(f"KADRFARM_CHROMIUM_PATH does not exist: {executable}")
+                launch_options["executable_path"] = str(executable.resolve())
+            browser = await playwright.chromium.launch(**launch_options)
+            context = None
+            try:
+                context = await browser.new_context(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=1,
+                )
+                page = await context.new_page()
+                page.set_default_timeout(45000)
+                await _install_asset_routes(page, served_assets)
+                await page.set_content(html_document, wait_until="load")
+                await page.wait_for_function(
+                    "window.__KADRFARM_READY__ === true", timeout=45000
+                )
+                media_errors = await page.evaluate(
+                    "window.__KADRFARM_MEDIA_ERRORS__ || []"
+                )
+                if media_errors:
+                    raise RuntimeError(
+                        "Browser could not decode visual assets during preflight: "
+                        + ", ".join(media_errors)
+                    )
+                layout_manifest = await page.evaluate(
+                    AUTOFIT_SCRIPT, {"variants": variants}
+                )
+                geometry_report = await evaluate_browser_geometry(
+                    page, safe_area_margin=safe_area_margin
+                )
+                for item in layout_manifest.get("objects", []):
+                    if item.get("status") == "unresolved":
+                        geometry_report.setdefault("errors", []).append(
+                            f"{item.get('object_id')}: AutoFit could not fit all text states "
+                            f"above the minimum readable size ({item.get('remaining_failures')})"
+                        )
+                geometry_report["status"] = (
+                    "failed" if geometry_report.get("errors") else
+                    "passed_with_warnings" if geometry_report.get("warnings") else "passed"
+                )
+                # Serialize the browser-adjusted DOM. Inline layout styles survive
+                # the second browser load used for the actual video recording.
+                adapted_document = "<!doctype html>\n" + await page.evaluate(
+                    "document.documentElement.outerHTML"
+                )
+                return adapted_document, layout_manifest, geometry_report
+            finally:
+                if context is not None:
+                    await context.close()
+                await browser.close()
+
+    def preflight_shot(
+        self,
+        plan: VisualStoryPlan,
+        shot: Shot,
+        assets: dict[str, ResolvedMedia],
+        duration_sec: float,
+        *,
+        work_dir: str | Path,
+        event_offsets: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Prepare and measure a shot without starting a video recording."""
+        if duration_sec <= 0 or not math.isfinite(duration_sec):
+            raise ValueError("duration_sec must be a finite positive value")
+        work = Path(work_dir).resolve()
+        work.mkdir(parents=True, exist_ok=True)
+        html_document, served_assets = self._build_served_document(
+            plan, shot, assets, event_offsets, duration_sec
+        )
+        adapted, layout_manifest, geometry_report = asyncio.run(
+            self._preflight_document(
+                html_document,
+                served_assets,
+                plan.width,
+                plan.height,
+                build_layout_variants(shot),
+                _number((plan.style or {}).get("safe_area_margin"), .04, 0, .15),
+            )
+        )
+        safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", shot.shot_id)
+        (work / f"{safe_id}.preflight.html").write_text(adapted, encoding="utf-8")
+        return {
+            "html_document": adapted,
+            "served_assets": served_assets,
+            "layout_manifest": layout_manifest,
+            "geometry_report": geometry_report,
+        }
+
+
+    def render_shot(
+        self,
+        plan: VisualStoryPlan,
+        shot: Shot,
+        assets: dict[str, ResolvedMedia],
+        duration_sec: float,
+        output_path: str | Path,
+        work_dir: str | Path | None = None,
+        event_offsets: dict[str, float] | None = None,
+        prepared: dict[str, Any] | None = None,
+    ) -> Path:
+        if duration_sec <= 0 or not math.isfinite(duration_sec):
+            raise ValueError("duration_sec must be a finite positive value")
+        output_path = Path(output_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        work = Path(work_dir).resolve() if work_dir else output_path.parent / "_professional_render"
+        work.mkdir(parents=True, exist_ok=True)
+        safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", shot.shot_id)
+        html_path = work / f"{safe_id}.html"
+        record_dir = work / f"{safe_id}_record"
+        if prepared is None:
+            # Direct callers receive the same safeguards as the full pipeline.
+            prepared = self.preflight_shot(
+                plan,
+                shot,
+                assets,
+                duration_sec,
+                work_dir=work / "preflight",
+                event_offsets=event_offsets,
+            )
+        html_doc = str(prepared["html_document"])
+        served_html = html_doc
+        served_assets = dict(prepared["served_assets"])
+        html_path.write_text(html_doc, encoding="utf-8")
+
+        geometry_report_path = output_path.with_suffix(output_path.suffix + ".geometry.json")
         webm_path, wall_clock_preroll = asyncio.run(
             self._record(
                 served_html,
@@ -1013,6 +1254,8 @@ class ProfessionalBrowserRenderer:
                 plan.width,
                 plan.height,
                 duration_sec,
+                geometry_report_path=geometry_report_path,
+                safe_area_margin=_number((plan.style or {}).get("safe_area_margin"), .04, 0, .15),
             )
         )
         target_frames = max(1, round(duration_sec * plan.fps))

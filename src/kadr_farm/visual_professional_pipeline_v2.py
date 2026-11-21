@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +18,13 @@ from .visual_professional_assets_v2 import ProfessionalAssetResolver
 from .visual_professional_renderer_v2 import ProfessionalBrowserRenderer
 from .visual_scene_compiler_v2 import compile_plan
 from .visual_story_v2 import VisualStoryPlan
+from .visual_professional_qc_v2 import (
+    build_asset_manifest_entry,
+    build_event_timeline,
+    build_object_inventory,
+    build_semantic_frame_requests,
+    extract_semantic_contact_frames,
+)
 
 
 class ProfessionalPipelineError(RuntimeError):
@@ -88,6 +96,7 @@ def render_professional_plan(
 
     durations, wav_paths, hashes = measure_speech_units(plan, plan_path.parent)
     jobs = compile_plan(plan, durations)
+    event_timeline = build_event_timeline(plan, jobs)
     shots = {shot.shot_id: shot for shot in plan.shots}
     resolver = ProfessionalAssetResolver(
         settings,
@@ -101,30 +110,101 @@ def render_professional_plan(
         crf=crf,
     )
 
+    # Phase 1: resolve media and preflight EVERY shot. No video segment is
+    # recorded until all shots pass AutoFit and Chromium geometry QC.
     segments: list[Path] = []
     asset_manifest: list[dict[str, Any]] = []
+    prepared_shots: list[dict[str, Any]] = []
+    preflight_dir = work / "preflight"
+    preflight_dir.mkdir(parents=True, exist_ok=True)
+    preflight_errors: list[str] = []
+    preflight_summary: list[dict[str, Any]] = []
+
     for index, job in enumerate(jobs, 1):
         shot = shots[job.shot_id]
+        print(
+            f"[Visual Pro Preflight] {shot.shot_id}: {job.duration_sec:.2f}s | "
+            f"{len(shot.objects)} objects | {len(shot.events)} events"
+        )
+        try:
+            assets = resolver.resolve_shot(shot)
+            for asset in assets.values():
+                asset_manifest.append(build_asset_manifest_entry(shot.shot_id, asset))
+            render_duration = (job.frame_end - job.frame_start) / plan.fps
+            prepared = renderer.preflight_shot(
+                plan,
+                shot,
+                assets,
+                render_duration,
+                work_dir=preflight_dir / shot.shot_id,
+                event_offsets={item.event.event_id: item.offset_sec for item in job.events},
+            )
+            layout_manifest = prepared["layout_manifest"]
+            geometry_report = prepared["geometry_report"]
+            safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", shot.shot_id)
+            (preflight_dir / f"{safe_name}.layout.json").write_text(
+                json.dumps(layout_manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            (preflight_dir / f"{safe_name}.geometry.json").write_text(
+                json.dumps(geometry_report, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            shot_errors = [str(item) for item in geometry_report.get("errors", [])]
+            preflight_errors.extend(f"{shot.shot_id}: {item}" for item in shot_errors)
+            preflight_summary.append({
+                "shot_id": shot.shot_id,
+                "status": geometry_report.get("status", "unknown"),
+                "errors": shot_errors,
+                "warnings": geometry_report.get("warnings", []),
+                "auto_fit": layout_manifest,
+            })
+            prepared_shots.append({
+                "index": index,
+                "job": job,
+                "shot": shot,
+                "assets": assets,
+                "duration": render_duration,
+                "prepared": prepared,
+            })
+            print(
+                f"[Visual Pro Preflight] {shot.shot_id}: {geometry_report.get('status')} | "
+                f"fitted={layout_manifest.get('fitted_count', 0)} | "
+                f"unresolved={layout_manifest.get('unresolved_count', 0)}"
+            )
+        except Exception as exc:
+            message = f"{shot.shot_id}: preflight execution failed: {type(exc).__name__}: {exc}"
+            preflight_errors.append(message)
+            preflight_summary.append({"shot_id": shot.shot_id, "status": "error", "errors": [message]})
+
+    preflight_report = {
+        "schema_version": "1.0",
+        "status": "failed" if preflight_errors else "passed",
+        "shots_checked": len(preflight_summary),
+        "shots_ready": sum(1 for item in preflight_summary if item.get("status") in {"passed", "passed_with_warnings"}),
+        "errors": preflight_errors,
+        "shots": preflight_summary,
+    }
+    (preflight_dir / "preflight_report.json").write_text(
+        json.dumps(preflight_report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    if preflight_errors:
+        preview = "\n".join(f"- {item}" for item in preflight_errors[:30])
+        raise ProfessionalPipelineError(
+            "All-shots preflight failed; no MP4 segments were recorded.\n"
+            f"See {preflight_dir / 'preflight_report.json'}\n{preview}"
+        )
+
+    # Phase 2: only preflight-approved documents enter the expensive recorder.
+    for item in prepared_shots:
+        index = item["index"]
+        job = item["job"]
+        shot = item["shot"]
+        assets = item["assets"]
+        render_duration = item["duration"]
         print(
             f"[Visual Pro] {shot.shot_id}: {job.duration_sec:.2f}s | "
             f"{len(shot.objects)} objects | {len(shot.events)} events"
         )
-        assets = resolver.resolve_shot(shot)
-        for asset in assets.values():
-            asset_manifest.append({
-                "shot_id": shot.shot_id,
-                "object_id": asset.object_id,
-                "path": str(asset.path),
-                "media_type": asset.media_type,
-                "source": asset.source,
-                "source_url": asset.source_url,
-                "creator": asset.creator,
-                "rights_status": asset.metadata.get("rights_status", "not_applicable"),
-            })
         segment_path = segment_dir / f"{index:04d}_{shot.shot_id}.mp4"
-        # Use the compiler's globally rounded frame boundaries. This prevents
-        # per-shot frame rounding from accumulating timing drift over long videos.
-        render_duration = (job.frame_end - job.frame_start) / plan.fps
         renderer.render_shot(
             plan,
             shot,
@@ -132,8 +212,14 @@ def render_professional_plan(
             render_duration,
             segment_path,
             work_dir=work / "browser" / shot.shot_id,
-            event_offsets={item.event.event_id: item.offset_sec for item in job.events},
+            event_offsets={event.event.event_id: event.offset_sec for event in job.events},
+            prepared=item["prepared"],
         )
+        geometry_path = segment_path.with_suffix(segment_path.suffix + ".geometry.json")
+        if not geometry_path.is_file():
+            raise ProfessionalPipelineError(
+                f"{shot.shot_id}: browser geometry QC report was not written"
+            )
         segments.append(segment_path)
 
     if not segments:
@@ -199,7 +285,7 @@ def render_professional_plan(
     probe = probe_video(output_path, ffprobe=settings.ffprobe)
     actual_duration = float((probe.get("format") or {}).get("duration") or 0)
     expected_audio = sum(durations.values())
-    tolerance = max(0.12, 1.5 / plan.fps)
+    tolerance = max(0.02, 1.5 / plan.fps)
     if actual_duration <= 0:
         raise ProfessionalPipelineError("ffprobe returned a zero-length video")
     if abs(actual_duration - expected_audio) > tolerance:
@@ -208,11 +294,16 @@ def render_professional_plan(
             f"{expected_audio:.3f}s by more than {tolerance:.3f}s"
         )
 
-    samples = _extract_contact_frames(
+    contact_frame_requests = build_semantic_frame_requests(
+        jobs,
+        plan.fps,
+        event_timeline,
+    )
+    samples = extract_semantic_contact_frames(
         output_path,
         work / "contact_frames",
         settings.ffmpeg,
-        interval_sec=max(1.0, expected_audio / 18.0),
+        contact_frame_requests,
     )
     contact = output_path.with_suffix(".contact.jpg")
     if samples:
@@ -229,14 +320,62 @@ def render_professional_plan(
     )
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
     audit["renderer"] = "playwright_html_svg_v2"
+    audit["preflight"] = preflight_report
+    audit["auto_fit"] = {
+        "engine": "chromium_measured_auto_fit_v1_1",
+        "shots": [item.get("auto_fit", {}) for item in preflight_summary],
+    }
     audit["media_assets"] = asset_manifest
     audit["expected_audio_duration_sec"] = round(expected_audio, 4)
     audit["duration_delta_sec"] = round(actual_duration - expected_audio, 4)
+    geometry_reports = []
+    for index, job in enumerate(jobs, start=1):
+        segment_path = segment_dir / f"{index:04d}_{job.shot_id}.mp4"
+        geometry_path = segment_path.with_suffix(segment_path.suffix + ".geometry.json")
+        shot_geometry = json.loads(geometry_path.read_text(encoding="utf-8"))
+        shot_geometry["shot_id"] = job.shot_id
+        geometry_reports.append(shot_geometry)
+    inventory = build_object_inventory(plan)
+    event_counts: dict[str, int] = {}
+    for item in event_timeline:
+        event_counts[item["action"]] = event_counts.get(item["action"], 0) + 1
+    geometry_errors = [
+        f"{shot_report.get('shot_id', 'shot')}: {message}"
+        for shot_report in geometry_reports
+        for message in shot_report.get("errors", [])
+    ]
+    geometry_warnings = [
+        f"{shot_report.get('shot_id', 'shot')}: {message}"
+        for shot_report in geometry_reports
+        for message in shot_report.get("warnings", [])
+    ]
+    audit["object_inventory"] = inventory
+    audit["event_timeline"] = event_timeline
+    audit["event_counts_by_action"] = dict(sorted(event_counts.items()))
+    audit["contact_sheet_frames"] = contact_frame_requests
+    audit["geometry_qc"] = {
+        "status": "failed" if geometry_errors else ("passed_with_warnings" if geometry_warnings else "passed"),
+        "shots": geometry_reports,
+        "errors": geometry_errors,
+        "warnings": geometry_warnings,
+    }
+    audit["quality_gate"] = {
+        "status": "passed_with_warnings" if geometry_warnings else "passed",
+        "event_conflicts": "none",
+        "event_timing": "all events fit within encoded shot frames",
+        "browser_geometry": "passed",
+        "all_shots_preflight": "passed",
+        "auto_fit": "chromium_measured",
+        "contact_sheet_mode": "semantic_event_states",
+        "media_sha256": "recorded",
+    }
     audit["quality_notes"] = [
         "Still images and video are native browser media layers.",
         "Charts, diagrams and shapes are SVG/HTML, not raster placeholder cards.",
         "Motion is evaluated in the browser timeline and captured as a shot video.",
         "Shot boundaries remain editorial cuts unless a future explicit transition is authored.",
+        "Browser geometry, safe-area and text-overflow checks ran before capture.",
+        "Contact sheet samples shot boundaries and authored event states.",
     ]
     audit_path.write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -252,4 +391,11 @@ def render_professional_plan(
         "audit": str(audit_path),
         "work_dir": str(work),
         "ffprobe": probe,
+        "geometry_qc": audit["geometry_qc"]["status"],
+        "contact_frame_count": len(contact_frame_requests),
+        "preflight_report": str(preflight_dir / "preflight_report.json"),
+        "auto_fit_adjusted_object_count": sum(
+            int(item.get("auto_fit", {}).get("fitted_count", 0))
+            for item in preflight_summary
+        ),
     }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from .visual_story_v2 import (
@@ -49,9 +50,14 @@ def compile_plan(
         )
 
     for unit_id, duration in measured_durations.items():
-        if duration <= 0:
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(float(duration))
+            or float(duration) <= 0
+        ):
             raise ValueError(
-                f"{unit_id}: measured duration must be positive"
+                f"{unit_id}: measured duration must be a finite positive number"
             )
 
     # Absolute timeline for each separately synthesized speech unit.
@@ -60,7 +66,7 @@ def compile_plan(
     cursor = 0.0
 
     for unit in plan.speech_units:
-        duration = measured_durations[unit.unit_id]
+        duration = float(measured_durations[unit.unit_id])
 
         start = cursor
         end = start + duration
@@ -77,6 +83,18 @@ def compile_plan(
 
         start = unit_timeline[first_id][0]
         end = unit_timeline[last_id][1]
+
+        # Video segments begin at globally rounded frame boundaries.
+        frame_start = round(start * plan.fps)
+        frame_end = round(end * plan.fps)
+
+        if frame_end <= frame_start:
+            raise ValueError(
+                f"{shot.shot_id}: measured duration {end - start:.6f}s "
+                f"produces zero video frames at {plan.fps} fps"
+            )
+
+        video_start_sec = frame_start / plan.fps
 
         scheduled_events: list[ScheduledEvent] = []
 
@@ -101,16 +119,13 @@ def compile_plan(
             scheduled_events.append(
                 ScheduledEvent(
                     event=event,
-                    offset_sec=absolute_event_time - start,
+                    offset_sec=max(0.0, absolute_event_time - video_start_sec),
                 )
             )
 
         scheduled_events.sort(
             key=lambda item: item.offset_sec
         )
-
-        frame_start = round(start * plan.fps)
-        frame_end = round(end * plan.fps)
 
         jobs.append(
             ShotJob(

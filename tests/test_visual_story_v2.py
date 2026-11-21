@@ -250,3 +250,37 @@ def test_illustrative_chart_is_allowed():
 
     assert chart.kind == "chart"
     assert chart.content["data_mode"] == "illustrative"
+
+def test_event_offset_uses_globally_rounded_video_start():
+    plan = VisualStoryPlan.model_validate(sample_plan())
+    jobs = compile_plan(plan, {"u01": 1.019, "u02": 2.0})
+
+    # u02 audio begins at 1.019s; its video shot begins at frame 25 = 1.0s.
+    event = next(item for item in jobs[1].events if item.event.event_id == "e02")
+    assert event.offset_sec == pytest.approx(0.519)
+
+
+def test_event_offset_clamps_to_zero_when_video_rounding_starts_later():
+    plan = VisualStoryPlan.model_validate(sample_plan())
+    plan.shots[1].events[0].anchor.offset_sec = 0.0
+
+    jobs = compile_plan(plan, {"u01": 1.021, "u02": 2.0})
+
+    # u02 audio begins at 1.021s, while its video segment starts at frame 26 = 1.04s.
+    event = next(item for item in jobs[1].events if item.event.event_id == "e02")
+    assert event.offset_sec == 0.0
+
+
+def test_compile_rejects_shot_that_rounds_to_zero_frames():
+    plan = VisualStoryPlan.model_validate(sample_plan())
+
+    with pytest.raises(ValueError, match="zero video frames"):
+        compile_plan(plan, {"u01": 0.005, "u02": 2.0})
+
+
+@pytest.mark.parametrize("bad_duration", [float("nan"), float("inf"), float("-inf"), True])
+def test_compile_rejects_non_finite_or_non_numeric_wav_duration(bad_duration):
+    plan = VisualStoryPlan.model_validate(sample_plan())
+
+    with pytest.raises(ValueError, match="finite positive number"):
+        compile_plan(plan, {"u01": bad_duration, "u02": 2.0})
