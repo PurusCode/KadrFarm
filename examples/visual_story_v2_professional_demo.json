@@ -1,0 +1,504 @@
+{
+    "schema_version":  "2.0",
+    "title":  "От данных к решению — Visual Engine Demo",
+    "width":  1920,
+    "height":  1080,
+    "fps":  25,
+    "background":  "#0B1220",
+    "style":  {
+                  "palette":  [
+                                  "#F5F7FB",
+                                  "#A8B4C7",
+                                  "#67A7FF",
+                                  "#38C7AE",
+                                  "#F2B36D"
+                              ],
+                  "background":  "#0B1220",
+                  "background_secondary":  "#18263A",
+                  "foreground":  "#F5F7FB",
+                  "muted":  "#A8B4C7",
+                  "accent":  "#67A7FF",
+                  "accent_secondary":  "#38C7AE",
+                  "surface":  "#172437",
+                  "surface_secondary":  "#22344C",
+                  "font_display":  "Arial",
+                  "font_body":  "Arial",
+                  "grain_opacity":  0.025,
+                  "vignette_opacity":  0.38
+              },
+    "speech_units":  [
+                         {
+                             "unit_id":  "u01",
+                             "text":  "Сначала данные существуют просто как разрозненные сигналы.",
+                             "char_start":  0,
+                             "char_end":  58
+                         },
+                         {
+                             "unit_id":  "u02",
+                             "text":  " Затем они проходят сбор, обработку и проверку.",
+                             "char_start":  58,
+                             "char_end":  105
+                         },
+                         {
+                             "unit_id":  "u03",
+                             "text":  " И только после этого превращаются в решение, которому можно доверять.",
+                             "char_start":  105,
+                             "char_end":  175
+                         }
+                     ],
+    "shots":  [
+                  {
+                      "shot_id":  "s01",
+                      "editorial_purpose":  "Сформировать кинематографический вход и показать необработанный поток сигналов.",
+                      "visual_summary":  "Полноэкранный документальный кадр серверной, затем типографический тезис с контрастной иерархией.",
+                      "speech_unit_ids":  [
+                                              "u01"
+                                          ],
+                      "relation_to_previous":  "introduces",
+                      "objects":  [
+                                      {
+                                          "object_id":  "server_photo",
+                                          "kind":  "image",
+                                          "role":  "background",
+                                          "layer":  {
+                                                        "z_index":  0,
+                                                        "region":  "full_frame",
+                                                        "x":  0.5,
+                                                        "y":  0.5,
+                                                        "width":  1.0,
+                                                        "height":  1.0,
+                                                        "fit":  "cover"
+                                                    },
+                                          "content":  {
+                                                          "search_queries":  [
+                                                                                 "cinematic server room data center blue light wide photo"
+                                                                             ],
+                                                          "focal_point":  [
+                                                                              0.58,
+                                                                              0.5
+                                                                          ],
+                                                          "gradient_overlay":  true,
+                                                          "alt":  "Серверная как визуальная метафора потока данных"
+                                                      },
+                                          "appearance":  {
+                                                             "shadow":  false
+                                                         }
+                                      },
+                                      {
+                                          "object_id":  "dark_wash",
+                                          "kind":  "shape",
+                                          "role":  "lighting_overlay",
+                                          "layer":  {
+                                                        "z_index":  1,
+                                                        "x":  0.5,
+                                                        "y":  0.5,
+                                                        "width":  1.0,
+                                                        "height":  1.0,
+                                                        "opacity":  0.56
+                                                    },
+                                          "content":  {
+                                                          "shape_type":  "rectangle"
+                                                      },
+                                          "appearance":  {
+                                                             "fill":  "#07101E",
+                                                             "stroke":  "#07101E",
+                                                             "stroke_width":  0
+                                                         }
+                                      },
+                                      {
+                                          "object_id":  "opening_title",
+                                          "kind":  "text",
+                                          "role":  "headline",
+                                          "initial_state":  "hidden",
+                                          "layer":  {
+                                                        "z_index":  3,
+                                                        "x":  0.34,
+                                                        "y":  0.44,
+                                                        "width":  0.59,
+                                                        "height":  0.45
+                                                    },
+                                          "content":  {
+                                                          "eyebrow":  "СИГНАЛЫ · ДАННЫЕ · РЕШЕНИЯ",
+                                                          "text":  "ДАННЫЕ ЕЩЁ НЕ\nОЗНАЧАЮТ ПОНИМАНИЕ",
+                                                          "font_size":  92,
+                                                          "font_weight":  850,
+                                                          "alignment":  "left",
+                                                          "vertical_align":  "center",
+                                                          "line_height":  0.98,
+                                                          "letter_spacing":  -2.5
+                                                      },
+                                          "appearance":  {
+                                                             "color":  "#FFFFFF",
+                                                             "shadow":  true
+                                                         }
+                                      },
+                                      {
+                                          "object_id":  "opening_note",
+                                          "kind":  "callout",
+                                          "role":  "supporting",
+                                          "layer":  {
+                                                        "z_index":  4,
+                                                        "x":  0.25,
+                                                        "y":  0.79,
+                                                        "width":  0.42,
+                                                        "height":  0.11
+                                                    },
+                                          "content":  {
+                                                          "eyebrow":  "ПЕРВЫЙ ШАГ",
+                                                          "text":  "Разрозненные сигналы нужно связать в систему."
+                                                      },
+                                          "appearance":  {
+                                                             "shadow":  "soft"
+                                                         }
+                                      }
+                                  ],
+                      "events":  [
+                                     {
+                                         "event_id":  "e_open_title",
+                                         "target_id":  "opening_title",
+                                         "action":  "fade_in",
+                                         "anchor":  {
+                                                        "unit_id":  "u01",
+                                                        "offset_sec":  0.18
+                                                    },
+                                         "duration_sec":  0.72,
+                                         "params":  {
+                                                        "easing":  "cinematic"
+                                                    }
+                                     },
+                                     {
+                                         "event_id":  "e_open_scale",
+                                         "target_id":  "opening_title",
+                                         "action":  "scale",
+                                         "anchor":  {
+                                                        "unit_id":  "u01",
+                                                        "offset_sec":  0.18
+                                                    },
+                                         "duration_sec":  0.9,
+                                         "params":  {
+                                                        "factor":  1.035,
+                                                        "easing":  "snappy"
+                                                    }
+                                     },
+                                     {
+                                         "event_id":  "e_open_note",
+                                         "target_id":  "opening_note",
+                                         "action":  "fade_in",
+                                         "anchor":  {
+                                                        "unit_id":  "u01",
+                                                        "offset_sec":  1.05
+                                                    },
+                                         "duration_sec":  0.5
+                                     }
+                                 ]
+                  },
+                  {
+                      "shot_id":  "s02",
+                      "editorial_purpose":  "Показать причинно-следственную структуру обработки данных.",
+                      "visual_summary":  "Три крупные смысловые станции соединены направленными связями; подписи являются частью узлов.",
+                      "speech_unit_ids":  [
+                                              "u02"
+                                          ],
+                      "relation_to_previous":  "extends",
+                      "objects":  [
+                                      {
+                                          "object_id":  "process_kicker",
+                                          "kind":  "text",
+                                          "role":  "eyebrow",
+                                          "layer":  {
+                                                        "z_index":  2,
+                                                        "x":  0.27,
+                                                        "y":  0.15,
+                                                        "width":  0.45,
+                                                        "height":  0.1
+                                                    },
+                                          "content":  {
+                                                          "eyebrow":  "КАК ПОЯВЛЯЕТСЯ СТРУКТУРА",
+                                                          "text":  "ТРИ ЭТАПА",
+                                                          "font_size":  68,
+                                                          "font_weight":  850,
+                                                          "alignment":  "left",
+                                                          "vertical_align":  "center"
+                                                      },
+                                          "appearance":  {
+                                                             "color":  "#FFFFFF"
+                                                         }
+                                      },
+                                      {
+                                          "object_id":  "process_graph",
+                                          "kind":  "node_graph",
+                                          "role":  "main_visual",
+                                          "layer":  {
+                                                        "z_index":  3,
+                                                        "x":  0.5,
+                                                        "y":  0.57,
+                                                        "width":  0.88,
+                                                        "height":  0.58
+                                                    },
+                                          "content":  {
+                                                          "layout":  "left_to_right",
+                                                          "node_width":  245,
+                                                          "node_height":  120,
+                                                          "font_size":  27,
+                                                          "nodes":  [
+                                                                        {
+                                                                            "node_id":  "collect",
+                                                                            "label":  "СБОР",
+                                                                            "subtitle":  "Сигналы и факты",
+                                                                            "x":  0.14,
+                                                                            "y":  0.5
+                                                                        },
+                                                                        {
+                                                                            "node_id":  "process",
+                                                                            "label":  "ОБРАБОТКА",
+                                                                            "subtitle":  "Связи и контекст",
+                                                                            "x":  0.5,
+                                                                            "y":  0.5
+                                                                        },
+                                                                        {
+                                                                            "node_id":  "verify",
+                                                                            "label":  "ПРОВЕРКА",
+                                                                            "subtitle":  "Надёжность и смысл",
+                                                                            "x":  0.86,
+                                                                            "y":  0.5
+                                                                        }
+                                                                    ],
+                                                          "edges":  [
+                                                                        {
+                                                                            "from":  "collect",
+                                                                            "to":  "process"
+                                                                        },
+                                                                        {
+                                                                            "from":  "process",
+                                                                            "to":  "verify"
+                                                                        }
+                                                                    ]
+                                                      },
+                                          "appearance":  {
+
+                                                         }
+                                      },
+                                      {
+                                          "object_id":  "process_footer",
+                                          "kind":  "text",
+                                          "role":  "caption",
+                                          "layer":  {
+                                                        "z_index":  4,
+                                                        "x":  0.5,
+                                                        "y":  0.89,
+                                                        "width":  0.7,
+                                                        "height":  0.08
+                                                    },
+                                          "content":  {
+                                                          "text":  "НЕ ПРОСТО НАКОПИТЬ. СВЯЗАТЬ, ПОНЯТЬ, ПРОВЕРИТЬ.",
+                                                          "font_size":  27,
+                                                          "font_weight":  700,
+                                                          "alignment":  "center",
+                                                          "vertical_align":  "center",
+                                                          "letter_spacing":  2.2
+                                                      },
+                                          "appearance":  {
+                                                             "color":  "#A8B4C7"
+                                                         }
+                                      }
+                                  ],
+                      "events":  [
+                                     {
+                                         "event_id":  "e_process_title",
+                                         "target_id":  "process_kicker",
+                                         "action":  "fade_in",
+                                         "anchor":  {
+                                                        "unit_id":  "u02",
+                                                        "offset_sec":  0.15
+                                                    },
+                                         "duration_sec":  0.55
+                                     },
+                                     {
+                                         "event_id":  "e_graph_draw",
+                                         "target_id":  "process_graph",
+                                         "action":  "draw",
+                                         "anchor":  {
+                                                        "unit_id":  "u02",
+                                                        "offset_sec":  0.55
+                                                    },
+                                         "duration_sec":  1.35,
+                                         "params":  {
+                                                        "easing":  "cinematic"
+                                                    }
+                                     },
+                                     {
+                                         "event_id":  "e_footer",
+                                         "target_id":  "process_footer",
+                                         "action":  "fade_in",
+                                         "anchor":  {
+                                                        "unit_id":  "u02",
+                                                        "offset_sec":  1.9
+                                                    },
+                                         "duration_sec":  0.45
+                                     }
+                                 ]
+                  },
+                  {
+                      "shot_id":  "s03",
+                      "editorial_purpose":  "Завершить мысль сильным визуальным результатом и вернуть зрителя к тезису.",
+                      "visual_summary":  "Движущийся абстрактный технологический видеокадр служит фоном; на переднем плане появляется короткий итог и счётчик этапов.",
+                      "speech_unit_ids":  [
+                                              "u03"
+                                          ],
+                      "relation_to_previous":  "resolves",
+                      "objects":  [
+                                      {
+                                          "object_id":  "network_video",
+                                          "kind":  "video",
+                                          "role":  "background",
+                                          "layer":  {
+                                                        "z_index":  0,
+                                                        "region":  "full_frame",
+                                                        "x":  0.5,
+                                                        "y":  0.5,
+                                                        "width":  1.0,
+                                                        "height":  1.0,
+                                                        "fit":  "cover"
+                                                    },
+                                          "content":  {
+                                                          "search_queries":  [
+                                                                                 "abstract digital data network particles technology cinematic video"
+                                                                             ],
+                                                          "loop_allowed":  true,
+                                                          "focal_point":  [
+                                                                              0.5,
+                                                                              0.5
+                                                                          ]
+                                                      },
+                                          "appearance":  {
+                                                             "shadow":  false
+                                                         }
+                                      },
+                                      {
+                                          "object_id":  "closing_shade",
+                                          "kind":  "shape",
+                                          "role":  "lighting_overlay",
+                                          "layer":  {
+                                                        "z_index":  1,
+                                                        "x":  0.5,
+                                                        "y":  0.5,
+                                                        "width":  1.0,
+                                                        "height":  1.0,
+                                                        "opacity":  0.68
+                                                    },
+                                          "content":  {
+                                                          "shape_type":  "rectangle"
+                                                      },
+                                          "appearance":  {
+                                                             "fill":  "#07101E",
+                                                             "stroke":  "#07101E",
+                                                             "stroke_width":  0
+                                                         }
+                                      },
+                                      {
+                                          "object_id":  "closing_title",
+                                          "kind":  "text",
+                                          "role":  "headline",
+                                          "initial_state":  "hidden",
+                                          "layer":  {
+                                                        "z_index":  3,
+                                                        "x":  0.39,
+                                                        "y":  0.44,
+                                                        "width":  0.68,
+                                                        "height":  0.42
+                                                    },
+                                          "content":  {
+                                                          "eyebrow":  "ИТОГ",
+                                                          "text":  "РЕЗУЛЬТАТ — ЭТО\nПРОВЕРЕННЫЙ СМЫСЛ",
+                                                          "font_size":  88,
+                                                          "font_weight":  850,
+                                                          "alignment":  "left",
+                                                          "vertical_align":  "center",
+                                                          "line_height":  1.0,
+                                                          "letter_spacing":  -2
+                                                      },
+                                          "appearance":  {
+                                                             "color":  "#FFFFFF",
+                                                             "shadow":  true
+                                                         }
+                                      },
+                                      {
+                                          "object_id":  "steps_counter",
+                                          "kind":  "counter",
+                                          "role":  "hero_metric",
+                                          "initial_state":  "hidden",
+                                          "layer":  {
+                                                        "z_index":  4,
+                                                        "x":  0.84,
+                                                        "y":  0.76,
+                                                        "width":  0.2,
+                                                        "height":  0.23
+                                                    },
+                                          "content":  {
+                                                          "value":  0,
+                                                          "label":  "ЭТАПА ДО РЕЗУЛЬТАТА",
+                                                          "suffix":  "",
+                                                          "font_size":  130
+                                                      },
+                                          "appearance":  {
+                                                             "color":  "#38C7AE"
+                                                         }
+                                      }
+                                  ],
+                      "events":  [
+                                     {
+                                         "event_id":  "e_close_title",
+                                         "target_id":  "closing_title",
+                                         "action":  "fade_in",
+                                         "anchor":  {
+                                                        "unit_id":  "u03",
+                                                        "offset_sec":  0.2
+                                                    },
+                                         "duration_sec":  0.7,
+                                         "params":  {
+                                                        "easing":  "cinematic"
+                                                    }
+                                     },
+                                     {
+                                         "event_id":  "e_counter_in",
+                                         "target_id":  "steps_counter",
+                                         "action":  "appear",
+                                         "anchor":  {
+                                                        "unit_id":  "u03",
+                                                        "offset_sec":  1.1
+                                                    },
+                                         "duration_sec":  0.1
+                                     },
+                                     {
+                                         "event_id":  "e_counter_count",
+                                         "target_id":  "steps_counter",
+                                         "action":  "count_up",
+                                         "anchor":  {
+                                                        "unit_id":  "u03",
+                                                        "offset_sec":  1.1
+                                                    },
+                                         "duration_sec":  1.0,
+                                         "params":  {
+                                                        "from":  0,
+                                                        "to":  3,
+                                                        "decimals":  0,
+                                                        "suffix":  ""
+                                                    }
+                                     },
+                                     {
+                                         "event_id":  "e_counter_glow",
+                                         "target_id":  "steps_counter",
+                                         "action":  "highlight",
+                                         "anchor":  {
+                                                        "unit_id":  "u03",
+                                                        "offset_sec":  1.2
+                                                    },
+                                         "duration_sec":  0.75,
+                                         "params":  {
+                                                        "color":  "#38C7AE"
+                                                    }
+                                     }
+                                 ]
+                  }
+              ]
+}

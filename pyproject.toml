@@ -34,10 +34,12 @@ tts = [
   "ruaccent @ git+https://github.com/Den4ikAI/ruaccent.git@39543da92705ab26103897eac7bc512c357449bd",
 ]
 test = ["pytest>=8.0.0"]
+visual = ["playwright>=1.50,<2"]
 
 [project.scripts]
 kadr-farm = "kadr_farm.cli:main"
 kadr-farm-semantic = "kadr_farm.semantic_cli:main"
+kadr-farm-visual-pro = "kadr_farm.visual_professional_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
