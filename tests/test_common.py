@@ -1,4 +1,4 @@
-from kadr_farm.common import parse_json_response, word_count, slugify
+from kadr_farm.common import parse_json_response, word_count, slugify, read_json
 from kadr_farm.youtube import iso_duration_seconds
 from kadr_farm.tts import normalize_for_speech
 from kadr_farm import text_normalization as normalizer
@@ -48,3 +48,15 @@ def test_speech_normalization_expands_numeric_russian_date(monkeypatch):
     text = normalize_for_speech("Дата публикации — 16.10.2026.")
     assert "шестнадцатого октября две тысячи двадцать шестого года" in text
     assert "16.10.2026" not in text
+
+
+def test_read_json_accepts_utf8_bom(tmp_path):
+    path = tmp_path / "with_bom.json"
+    path.write_bytes(b'\xef\xbb\xbf{"ok": true}')
+    assert read_json(path) == {"ok": True}
+
+
+def test_read_json_accepts_utf8_without_bom(tmp_path):
+    path = tmp_path / "without_bom.json"
+    path.write_bytes(b'{"ok": true}')
+    assert read_json(path) == {"ok": True}

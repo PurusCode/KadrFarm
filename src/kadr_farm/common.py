@@ -35,7 +35,7 @@ def write_json(path: str | Path, payload: Any) -> None:
                 pass
 
 def read_json(path: str | Path) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
 def words(text: str) -> list[str]:
     return re.findall(r"[A-Za-zА-Яа-яЁё0-9]+(?:[.-][A-Za-zА-Яа-яЁё0-9]+)*", text or "")

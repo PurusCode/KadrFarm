@@ -12,7 +12,7 @@ from .visual_story_v2 import VisualStoryPlan
 
 def _load_plan(path: Path) -> VisualStoryPlan:
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        document = json.loads(path.read_text(encoding="utf-8-sig"))
         return VisualStoryPlan.model_validate(document)
     except Exception as exc:
         raise RuntimeError(f"Cannot load Visual Story plan: {exc}") from exc

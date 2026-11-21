@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from kadr_farm.visual_professional_assets_v2 import ResolvedMedia
@@ -8,6 +9,7 @@ from kadr_farm.visual_professional_renderer_v2 import (
     _recording_frame_window,
 )
 from kadr_farm.visual_story_v2 import VisualStoryPlan
+from kadr_farm.visual_professional_cli import _load_plan
 
 
 def _base_plan(objects, events=None):
@@ -220,3 +222,33 @@ def test_recording_frame_window_rejects_negative_preroll():
 
     with pytest.raises(ValueError, match="preroll_frames cannot be negative"):
         _recording_frame_window(120, 120, preroll_frames=-1)
+
+
+def test_load_plan_accepts_utf8_bom(tmp_path):
+    plan = _base_plan([{
+        "object_id": "bom_probe",
+        "kind": "text",
+        "content": {"text": "BOM test"},
+    }])
+    payload = json.dumps(plan.model_dump(mode="json"), ensure_ascii=False)
+    path = tmp_path / "plan_bom.json"
+    path.write_bytes(b"\xef\xbb\xbf" + payload.encode("utf-8"))
+
+    loaded = _load_plan(path)
+    assert isinstance(loaded, VisualStoryPlan)
+    assert loaded.title == plan.title
+
+
+def test_load_plan_accepts_utf8_without_bom(tmp_path):
+    plan = _base_plan([{
+        "object_id": "bom_probe",
+        "kind": "text",
+        "content": {"text": "BOM test"},
+    }])
+    payload = json.dumps(plan.model_dump(mode="json"), ensure_ascii=False)
+    path = tmp_path / "plan.json"
+    path.write_text(payload, encoding="utf-8")
+
+    loaded = _load_plan(path)
+    assert isinstance(loaded, VisualStoryPlan)
+    assert loaded.title == plan.title
