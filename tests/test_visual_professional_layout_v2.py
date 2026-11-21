@@ -77,6 +77,9 @@ def test_autofit_script_has_readability_floors_and_reports_unresolved_items():
 
 def test_autofit_script_checks_actual_object_and_clipping_bounds():
     assert "text_outside_object" in AUTOFIT_SCRIPT
+    assert "originalMarkup" in AUTOFIT_SCRIPT
+    assert "combined_final" in AUTOFIT_SCRIPT
+    assert "checked_states" in AUTOFIT_SCRIPT
     assert "ancestor_clipping" in AUTOFIT_SCRIPT
     assert "component_container_clipping" in AUTOFIT_SCRIPT
 
@@ -117,7 +120,7 @@ def test_chromium_autofit_fits_real_text_components_and_dynamic_counter_state():
     .counter-label{font-size:clamp(17px,1.8vw,36px);line-height:1.2;font-weight:600}
     </style></head><body><main class='scene-canvas'>
     <div class='scene-object object-callout' data-object-id='opening_note' style='left:25%;top:79%;width:42%;height:11%'><div class='callout'><div class='callout-eyebrow'>ПЕРВЫЙ ШАГ</div><div class='callout-copy'>Разрозненные сигналы нужно связать в систему.</div></div></div>
-    <div class='scene-object object-text' data-object-id='process_kicker' style='left:27%;top:15%;width:45%;height:10%'><div class='type-layout'><div class='type-eyebrow'>КАК ПОЯВЛЯЕТСЯ СТРУКТУРА</div><div class='type-main' style='--type-size:68px;--type-line:1.02'>ТРИ ЭТАПА</div></div></div>
+    <div class='scene-object object-text' data-object-id='process_kicker' style='left:27%;top:15%;width:45%;height:10%'><div class='type-layout'><div class='type-eyebrow'>КАК ПОЯВЛЯЕТСЯ СТРУКТУРА</div><div class='type-main' style='--type-size:68px;--type-line:1.02'><span class='emphasis'>ТРИ</span> ЭТАПА</div></div></div>
     <div class='scene-object object-counter' data-object-id='steps_counter' style='left:84%;top:76%;width:20%;height:23%'><div class='counter' style='--counter-value-size:130px'><div class='counter-value'>0</div><div class='counter-label'>ЭТАПА ДО РЕЗУЛЬТАТА</div></div></div>
     </main></body></html>"""
     with sync_playwright() as playwright:
@@ -129,8 +132,10 @@ def test_chromium_autofit_fits_real_text_components_and_dynamic_counter_state():
             page = browser.new_page(viewport={"width": 1920, "height": 1080})
             page.set_content(html, wait_until="load")
             manifest = page.evaluate(AUTOFIT_SCRIPT, {"variants": [
-                {"target_id":"steps_counter", "selector":".counter-value", "text":"0.0%"},
-                {"target_id":"steps_counter", "selector":".counter-value", "text":"125.5%"},
+                {"target_id":"steps_counter", "selector":".counter-value", "text":"0.0%", "event_id":"count_from"},
+                {"target_id":"steps_counter", "selector":".counter-value", "text":"125.5%", "event_id":"count_to"},
+                {"target_id":"process_kicker", "selector":".type-main", "text":"БОЛЬШОЕ НАЗВАНИЕ", "event_id":"title_update"},
+                {"target_id":"process_kicker", "selector":".type-eyebrow", "text":"ДРУГОЙ ПОДЗАГОЛОВОК", "event_id":"eyebrow_update"},
             ]})
             assert manifest["unresolved_count"] == 0
             statuses = {item["object_id"]: item["status"] for item in manifest["objects"]}
@@ -139,6 +144,12 @@ def test_chromium_autofit_fits_real_text_components_and_dynamic_counter_state():
             assert statuses["steps_counter"] in {"fitted", "unchanged"}
             counter = next(item for item in manifest["objects"] if item["object_id"] == "steps_counter")
             assert counter["states_checked"] == 3
+            kicker = next(item for item in manifest["objects"] if item["object_id"] == "process_kicker")
+            assert kicker["states_checked"] == 4
+            assert "title_update" in kicker["checked_states"]
+            assert "eyebrow_update" in kicker["checked_states"]
+            assert "combined_final" in kicker["checked_states"]
+            assert page.locator('[data-object-id="process_kicker"] .type-main .emphasis').inner_text() == "ТРИ"
             for object_id in ("opening_note", "process_kicker", "steps_counter"):
                 geometry = page.locator(f'[data-object-id="{object_id}"]').evaluate("""el => {
                     const root=el.getBoundingClientRect();

@@ -79,9 +79,9 @@ AUTOFIT_SCRIPT = r"""(options) => {
       const selector = String(variant.selector || '');
       const node = selector ? object.querySelector(selector) : object;
       if (!node) {
-        result.push({selector, text:String(variant.text ?? ''), missing:true});
+        result.push({selector, text:String(variant.text ?? ''), event_id:String(variant.event_id || ''), missing:true});
       } else {
-        result.push({node, selector, text:String(variant.text ?? ''), missing:false});
+        result.push({node, selector, text:String(variant.text ?? ''), event_id:String(variant.event_id || ''), missing:false});
       }
     }
     return result;
@@ -226,49 +226,80 @@ AUTOFIT_SCRIPT = r"""(options) => {
       parts:baselineParts
     };
     const stateVariants = collectStateVariants(objectId, object, config.parts);
-    const originalText = stateVariants.filter(v => !v.missing).map(v => ({node:v.node, value:v.node.textContent}));
+    // Preserve markup, not just textContent: authored emphasis spans, inline
+    // labels and other child nodes must survive the temporary event-state test.
+    const originalMarkup = [...new Set(stateVariants.filter(v => !v.missing).map(v => v.node))]
+      .map(node => ({node, html:node.innerHTML}));
+    const restoreMarkup = () => {
+      for (const item of originalMarkup) item.node.innerHTML = item.html;
+    };
+
+    // Test each event state independently, then also test a combined final
+    // state when different text nodes change in the same shot. Two endpoints
+    // of count_up target the same node and are alternatives, not simultaneous.
+    const stateScenarios = [{label:'authored', changes:[]}];
+    for (const variant of stateVariants) {
+      stateScenarios.push({
+        label:variant.event_id || variant.selector || 'event_state',
+        changes:[variant],
+      });
+    }
+    const uniqueVariantNodes = new Set(stateVariants.filter(v => !v.missing).map(v => v.node));
+    if (uniqueVariantNodes.size > 1) {
+      const lastByNode = new Map();
+      for (const variant of stateVariants) if (!variant.missing) lastByNode.set(variant.node, variant);
+      stateScenarios.push({label:'combined_final', changes:[...lastByNode.values()]});
+    }
 
     const fitsAt = (scale) => {
       applyScaledStyles(container, textElements, baseline, scale, config.spacingPower);
-      const states = [null, ...stateVariants];
-      for (const state of states) {
-        if (state && state.missing) return false;
-        if (state) state.node.textContent = state.text;
-        const measured = measureFit(object, container, textElements);
-        if (state) {
-          const saved = originalText.find(item => item.node === state.node);
-          if (saved) state.node.textContent = saved.value;
+      const failures = [];
+      for (const scenario of stateScenarios) {
+        restoreMarkup();
+        let missing = false;
+        for (const state of scenario.changes) {
+          if (state.missing) {
+            failures.push(`${scenario.label}:missing_target:${state.selector}`);
+            missing = true;
+            continue;
+          }
+          state.node.textContent = state.text;
         }
-        if (!measured.fits) return false;
+        if (missing) continue;
+        const measured = measureFit(object, container, textElements);
+        if (!measured.fits) {
+          failures.push(`${scenario.label}:${measured.failures.join(',')}`);
+        }
       }
-      return true;
+      restoreMarkup();
+      return {fits:failures.length === 0, failures};
     };
 
-    const initial = measureFit(object, container, textElements);
     let appliedScale = 1;
-    let fits = fitsAt(1);
+    let evaluation = fitsAt(1);
+    let fits = evaluation.fits;
     if (!fits) {
-      if (fitsAt(minimumScale)) {
+      const minimumEvaluation = fitsAt(minimumScale);
+      if (minimumEvaluation.fits) {
         let low = minimumScale;
         let high = 1;
-        for (let iteration = 0; iteration < 12; iteration += 1) {
+        for (let iteration = 0; iteration < 14; iteration += 1) {
           const middle = (low + high) / 2;
-          if (fitsAt(middle)) low = middle;
+          if (fitsAt(middle).fits) low = middle;
           else high = middle;
         }
         appliedScale = low;
         fits = true;
+        evaluation = fitsAt(appliedScale);
       } else {
         appliedScale = minimumScale;
-        fitsAt(appliedScale);
         fits = false;
+        evaluation = minimumEvaluation;
       }
     }
-    // Restore authored/current text after all alternate event states were tested.
-    for (const item of originalText) item.node.textContent = item.value;
+    // Always leave the DOM in its authored state before serializing the page.
+    restoreMarkup();
     applyScaledStyles(container, textElements, baseline, appliedScale, config.spacingPower);
-    const finalMeasurement = measureFit(object, container, textElements);
-    fits = fits && finalMeasurement.fits;
 
     const finalFontSizes = {};
     for (const item of baselineParts) {
@@ -282,15 +313,16 @@ AUTOFIT_SCRIPT = r"""(options) => {
       minimum_scale:Number(minimumScale.toFixed(4)),
       final_font_sizes_px:finalFontSizes,
       spacing_scale:Number(Math.pow(appliedScale, config.spacingPower).toFixed(4)),
-      states_checked:1 + stateVariants.length,
-      remaining_failures:finalMeasurement.failures
+      states_checked:stateScenarios.length,
+      checked_states:stateScenarios.map(item => item.label),
+      remaining_failures:fits ? [] : evaluation.failures
     });
   }
 
   const unresolved = report.filter(item => item.status === 'unresolved');
   return {
     schema_version:'1.0',
-    engine:'chromium_measured_auto_fit_v1_1',
+    engine:'chromium_measured_auto_fit_v1_2',
     object_count:report.length,
     fitted_count:report.filter(item => item.status === 'fitted').length,
     unchanged_count:report.filter(item => item.status === 'unchanged').length,

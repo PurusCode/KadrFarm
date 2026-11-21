@@ -322,7 +322,7 @@ def render_professional_plan(
     audit["renderer"] = "playwright_html_svg_v2"
     audit["preflight"] = preflight_report
     audit["auto_fit"] = {
-        "engine": "chromium_measured_auto_fit_v1_1",
+        "engine": "chromium_measured_auto_fit_v1_2",
         "shots": [item.get("auto_fit", {}) for item in preflight_summary],
     }
     audit["media_assets"] = asset_manifest
