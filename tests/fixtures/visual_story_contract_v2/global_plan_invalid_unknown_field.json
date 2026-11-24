@@ -1,0 +1,82 @@
+{
+  "schema_version": "2.0",
+  "plan_id": "visual_story_main",
+  "title": "Почему нейросеть уверенно врёт?",
+  "storyboard_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "visual_thesis": "Уверенный внешний вид ответа противопоставляется проверяемым свидетельствам.",
+  "arc_summary": "Сначала показываем убедительный ответ, затем сталкиваем его с проверкой и раскрываем критерии достоверности.",
+  "style": {
+    "visual_language": "cinematic_editorial",
+    "palette": [
+      "#101827",
+      "#F2AA4C",
+      "#E8E8E8"
+    ],
+    "typography": "editorial_sans",
+    "contrast": "high",
+    "texture": "clean",
+    "camera_language": [
+      "close_up",
+      "top_down"
+    ],
+    "motion_language": [
+      "controlled_reveal",
+      "cut_on_change"
+    ]
+  },
+  "arc": [
+    {
+      "arc_id": "arc_01",
+      "purpose": "От уверенного впечатления к проверке фактов",
+      "scene_ids": [
+        "s_001",
+        "s_002"
+      ]
+    }
+  ],
+  "motifs": [],
+  "scenes": [
+    {
+      "scene_id": "s_001",
+      "narrative_role": "hook",
+      "visual_purpose": "Показать убедительность ответа до проверки его содержания.",
+      "visual_strategy": "Крупный план ответа на экране, вокруг которого постепенно появляются графические маркеры проверки.",
+      "dominant_visual_modes": [
+        "stock_video",
+        "typography",
+        "graphic"
+      ],
+      "planned_shot_count": {
+        "minimum": 1,
+        "maximum": 2
+      },
+      "relation_to_previous": {
+        "kind": "introduces",
+        "source_scene_id": null,
+        "reason": "Начало визуальной истории."
+      },
+      "motif_refs": []
+    },
+    {
+      "scene_id": "s_002",
+      "narrative_role": "turn",
+      "visual_purpose": "Показать разрыв между уверенным тоном и достоверностью.",
+      "visual_strategy": "Контрастный переход от визуально убедительного ответа к проверяемым источникам и свидетельствам.",
+      "dominant_visual_modes": [
+        "diagram",
+        "typography"
+      ],
+      "planned_shot_count": {
+        "minimum": 1,
+        "maximum": 2
+      },
+      "relation_to_previous": {
+        "kind": "contrasts",
+        "source_scene_id": "s_001",
+        "reason": "Сопоставляем впечатление от ответа с проверкой доказательств."
+      },
+      "motif_refs": []
+    }
+  ],
+  "unrecognized_director_note": "must fail"
+}

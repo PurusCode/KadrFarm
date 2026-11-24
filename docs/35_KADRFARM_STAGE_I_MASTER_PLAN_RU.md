@@ -1,6 +1,6 @@
 # KadrFarm — главный план Stage I: Visual Story 2.0
 
-- **Версия документа:** 1.0
+- **Версия документа:** 1.2
 - **Дата создания:** 24.11.2026
 - **Рабочая ветка:** `feature/autonomous-video-engine-2`
 - **Исходная контрольная точка:** `414d08c9a4e8ef7748488e356d266ac62083be5a` (`Harden AutoFit dynamic state integrity`)
@@ -116,42 +116,46 @@
 Чтобы документы не противоречили друг другу, использовать следующий порядок:
 
 1. **Этот документ (`docs/35_KADRFARM_STAGE_I_MASTER_PLAN_RU.md`)** — актуальное направление Stage I, принятые решения, статусы checkpoint и следующий шаг.
-2. **`docs/34_VISUAL_STORY_CONTRACT_V2_RU.md`** — основная техническая концепция целевого контракта 2.0. На дату старта это draft: перед реализацией модели требуется отдельная сверка полей, enum, связей и исполнимых возможностей. Его пункты не считаются реализованными только потому, что описаны.
-3. **`docs/VISUAL_STORY_V2_PROFESSIONAL_RENDERER_RU.md`** — описание уже существующего Professional Renderer V2, его возможностей, технических gates и ограничений.
-4. **`docs/30_VISUAL_STORYTELLING_PILOT_2026-11-18_RU.md`** — диагностические выводы реального пилота: техническая синхронизация работала, но визуальная режиссура была однообразной, часть стоков имела слабое смысловое соответствие, требовались более сильные объясняющие композиции.
-5. **`docs/32_VISUAL_STORY_TWO_PASS_CONTRACT_RU.md`** — прежний контракт двухпроходной режиссуры 1.x. Использовать как исторический источник отдельных полезных правил (один глобальный запрос, последовательный scene context, журнал, fingerprints), но не переносить противоречащие 2.0 ограничения.
-6. **`src/kadr_farm/visual_story.py` и `src/kadr_farm/visual_story_prompts.py`** — существующая независимая реализация контракта 1.x. Она остаётся нетронутой и не становится автоматически контрактом 2.0.
+2. **`docs/36_VISUAL_STORY_2_CONTRACT_FREEZE_RU.md`** — замороженный authoring contract 2.0: модели, source references, anchors, типизированные объекты/события и границы исполнения. В части Stage I он конкретизирует технические правила этого мастер-документа.
+3. **`docs/34_VISUAL_STORY_CONTRACT_V2_RU.md`** — исходный архитектурный draft. Используется как концептуальный источник, но в случае расхождения приоритет имеют документы 35 и 36.
+4. **`docs/VISUAL_STORY_V2_PROFESSIONAL_RENDERER_RU.md`** — описание существующего Professional Renderer V2, его возможностей, технических gates и ограничений.
+5. **`docs/30_VISUAL_STORYTELLING_PILOT_2026-11-18_RU.md`** — выводы визуального пилота: техническая синхронизация работала, но режиссура была однообразной, часть стоков имела слабое смысловое соответствие, требовались более сильные объясняющие композиции.
+6. **`docs/32_VISUAL_STORY_TWO_PASS_CONTRACT_RU.md`** — историческая спецификация прежней двухпроходной режиссуры 1.x. Полезные общие правила можно учитывать, но противоречащие решения не переносить.
+7. **`src/kadr_farm/visual_story.py` и `src/kadr_farm/visual_story_prompts.py`** — legacy authoring contract 1.x. Он остаётся нетронутым и не становится автоматически контрактом 2.0.
+8. **`src/kadr_farm/visual_story_v2.py` и связанные renderer/execution modules** — существующий исполнимый runtime contract V2. Он не является реализацией нового двухпроходного authoring contract и остаётся рабочей производственной основой.
 
-### 5.1. Явно устаревшие для 2.0 правила
+### 5.1. Различия версий и устаревшие для 2.0 правила
 
-В старых моделях/промптах и `docs/32_VISUAL_STORY_TWO_PASS_CONTRACT_RU.md` встречаются требования повторяющегося мотива и минимальной доли развивающихся сцен. Они конфликтуют с более поздним принципом `docs/34_VISUAL_STORY_CONTRACT_V2_RU.md`, где мотивы и continuity quotas необязательны.
+В старой реализации `visual_story.py` / `visual_story_prompts.py` встречались требования повторяющегося мотива и минимальной доли развивающихся сцен. Для нового authoring contract 2.0 эти квоты **не действуют**. Не удалять legacy 1.x: его ограничения остаются только внутри старой версии и её тестов.
 
-Для нового контракта 2.0 эти квоты **не действуют**. Не удалять старую реализацию 1.x: её ограничения остаются только внутри старой версии и её старых тестов.
+Существующий `visual_story_v2.py` — отдельная runtime-схема с `SpeechUnit`, `Shot`, `VisualObject` и `VisualEvent`; она использует measured offsets/durations и связана с реальными renderer/execution модулями. Не считать её старым authoring contract 1.x и не заменять новым пакетом. Новый двухпроходный authoring contract расположен в `visual_story_contract_v2/`; преобразование между ним и runtime V2 допускается только через отдельный проверяемый адаптер на CP-06.
 
 ## 6. Архитектура и границы внедрения
 
 ### 6.1. Параллельная реализация
 
-Новый код размещается отдельно от существующих модулей. На старте предполагается уникальный пакет:
+Новый authoring contract размещён в отдельном пакете:
 
 ```text
 src/kadr_farm/visual_story_contract_v2/
     __init__.py
-    models_global.py
-    models_scene.py
-    models_objects.py
-    models_events.py
-    models_timing.py
-    models_continuity.py
-    models_execution.py
+    common.py
+    global_plan.py
+    objects.py
+    events.py
+    scene_plan.py
+    execution.py
     validation.py
-    capabilities.py
-    compiler.py
 ```
 
-Точный раскрой файлов утверждается на checkpoint моделей. Не создавать пакет с именем `visual_story_v2`: в репозитории уже есть одноимённый файл `src/kadr_farm/visual_story_v2.py`, и затенять его package-ом нельзя.
+Пакет не затеняет существующий файл `src/kadr_farm/visual_story_v2.py`. Последний остаётся отдельным runtime contract. Новый пакет не подключён к старым renderer/CLI и не меняет их поведение.
 
-Тесты нового контракта должны иметь отдельные имена, например `tests/test_visual_story_contract_v2_*.py`, а JSON fixtures — отдельный каталог `tests/fixtures/visual_story_v2/`.
+Тесты и fixtures изолированы:
+
+```text
+tests/test_visual_story_contract_v2.py
+tests/fixtures/visual_story_contract_v2/
+```
 
 ### 6.2. Запрещено до отдельной приёмки
 
@@ -183,22 +187,44 @@ src/kadr_farm/visual_story_contract_v2/
 
 ### CP-01 — Freeze технического контракта 2.0 и fixtures
 
-**Задача:** перевести draft-спецификацию в однозначный исполнимый контракт.
+**Задача:** закрепить строгий двухпроходный authoring contract 2.0, не смешивая его с существующим runtime V2.
 
-**Обязательные результаты:**
+**Почему:** существующие `visual_story.py` (legacy authoring 1.x) и `visual_story_v2.py` (исполняемый runtime V2) имеют разные назначения. Новому Global Director / Scene Director нужен отдельный контракт с точными речевыми диапазонами и без LLM-таймкодов.
 
-- строгие Pydantic v2 модели Global Plan и Scene/Shot Plan;
-- типизированные модели объектов и содержимого;
-- типизированные события, target/subtarget и параметры;
-- speech anchors с exact text spans;
-- continuity references, entry/exit states и правила локальных объектов;
-- модели AssetRequest, renderer target/capabilities и ExecutionPlan настолько, насколько нужно для следующего compiler checkpoint;
-- валидные и невалидные JSON fixtures;
-- тесты unknown fields, enum, duplicate IDs, broken references, несовместимых actions, пустого списка мотивов, контраста без object carry-over и сложных многослойных композиций.
+**Состав CP-01:**
 
-**Не входит:** LLM-вызовы, вызовы Pixabay, рендер и изменение production CLI.
+- `src/kadr_farm/visual_story_contract_v2/` — 8 файлов строгих Pydantic v2 моделей и cross-validation;
+- `tests/test_visual_story_contract_v2.py` — отдельный набор из 49 тестов;
+- `tests/fixtures/visual_story_contract_v2/` — 8 JSON fixtures;
+- `docs/36_VISUAL_STORY_2_CONTRACT_FREEZE_RU.md` — полная замороженная спецификация;
+- обновление этого мастер-документа.
 
-**Критерий выхода:** валидные fixtures проходят; некорректные отклоняются точными ошибками; тесты доказывают, что мотивы необязательны, continuity quota отсутствует, координаты/время не генерируются моделью; все старые тесты проекта продолжают проходить.
+**Принятые решения:**
+
+- Global Plan покрывает все исходные `scene_id` строго в исходном порядке; Scene Plan существует ровно один на каждую исходную сцену.
+- Источник речи — `storyboard.scenes[].voice_text`; новый контракт не предполагает `beat_id` и не возвращает/переписывает `voice_text`.
+- Speech anchors адресуют точные Unicode character spans исходного текста и проверяются по исходному excerpt и SHA-256.
+- В authoring-моделях нет секунд, frame indices, pixel geometry или произвольного исполняемого кода; renderer рассчитывает техническое исполнение.
+- Объекты и действия типизированы; неизвестные поля и enum отклоняются; проверяются targets/subtargets, групповые ссылки и циклы.
+- Numeric claims требуют provenance references; illustrative values требуют явной маркировки. Формулы допускают только ограниченное арифметическое выражение на зарегистрированных refs.
+- Контраст, разрешение, callback и переход допустимы без переноса одного объекта. Пустые motifs и отсутствие continuity carry-over полностью допустимы; квот нет.
+- ExecutionPlan, AssetRequest, RendererCapabilities и RenderTask — только структуры данных CP-01. Реальный registry/compiler относятся к следующим этапам.
+- Неподдерживаемое действие должно блокировать исполнение; silent substitution запрещена.
+
+**Локальные проверки 24.11.2026:**
+
+- `python -m compileall -q src/kadr_farm/visual_story_contract_v2` — успешно.
+- `python -m pytest -q tests/test_visual_story_contract_v2.py` — **49 passed in 0.28s**.
+- `python -m pytest -q` — **437 passed in 11.24s**.
+- `git diff --check` — ошибок whitespace не обнаружено. Git вывел только стандартное предупреждение Windows LF/CRLF.
+- Runtime/renderer/CLI файлы не изменены; единственное изменение отслеживаемого файла до этой записи — данный мастер-документ.
+- Ранее существовавшая резервная копия `docs/35...before_cp01...bak` сохранена; установщики и иные untracked-файлы не включаются.
+
+**Не входит:** LLM/MWS-вызовы, Pixabay, реальный capability registry, compiler implementation, actual render, FFmpeg, production CLI, provider routing и изменение existing runtime V2.
+
+**Статус:** локальные критерии CP-01 пройдены; выполняется финальное stage/review. Контрольная точка будет окончательно закрыта только после отдельного commit и подтверждённого push.
+
+**Следующий шаг:** завершить commit/push CP-01. Только после подтверждения удалённой ветки разрешается CP-02 — реестр реальных возможностей renderers.
 
 ### CP-02 — Renderer Capability Registry
 
@@ -278,21 +304,31 @@ src/kadr_farm/visual_story_contract_v2/
 
 ### CP-00 — Навигационный документ
 
-- **Статус:** закрывается атомарно коммитом, который добавляет этот документ; push подтверждается сравнением локального и удалённого HEAD.
+- **Статус:** выполнен; commit и push подтверждены.
 - **Почему:** нужен единый источник актуального направления и обязательная дисциплина commit/push после каждого этапа.
-- **Файлы:** `docs/35_KADRFARM_STAGE_I_MASTER_PLAN_RU.md`.
+- **Файл:** `docs/35_KADRFARM_STAGE_I_MASTER_PLAN_RU.md`.
 - **Runtime изменения:** нет.
-- **Тесты:** проверка документа и Git diff выполняются при установке; автоматические и целевые runtime-тесты не требуются, поскольку код не меняется.
-- **Commit / GitHub:** SHA вводящего коммита берётся из `git log`; он будет записан в журнале следующей контрольной точки. Push подтверждается сравнением `HEAD` и `origin/feature/autonomous-video-engine-2`.
-- **Следующий шаг после подтверждения push:** CP-01 — freeze контракта 2.0 и fixtures.
+- **Проверки:** UTF-8 валиден, 317 строк; SHA-256 исходного файла перед stage совпал с ожидаемым; `git diff --cached --check` без ошибок; в stage был только этот файл.
+- **Commit:** `12fffcf4de4c4978ebfe66e7a549ab521fcf8105` (`Add Stage I Visual Story 2.0 master plan`).
+- **Push:** `origin/feature/autonomous-video-engine-2` подтверждён; после `git fetch origin` локальный `HEAD` и `origin/feature/autonomous-video-engine-2` совпали. Прежние untracked installers/backups остались нетронутыми.
+
+### CP-01 — Заморозка authoring contract 2.0
+
+- **Статус:** локальные acceptance checks пройдены; commit/push ожидаются.
+- **Почему:** строго разделить новый двухпроходный authoring contract, legacy 1.x и действующий runtime V2.
+- **Файлы:** 8 модулей нового пакета, 8 JSON fixtures, 1 тестовый модуль, `docs/36_VISUAL_STORY_2_CONTRACT_FREEZE_RU.md`, этот мастер-документ.
+- **Runtime изменения:** нет; существующие renderers, CLI, production path и provider routing не менялись.
+- **Проверки:** compileall успешно; целевые тесты 49/49; полный набор 437/437; `git diff --check` без whitespace ошибок.
+- **Commit / push:** будут вписаны после создания и проверки отдельного CP-01 коммита.
+- **Следующий этап:** CP-02 только после подтверждения push CP-01.
 
 ## 10. Текущий рабочий статус
 
 | Контрольная точка | Статус |
 |---|---|
-| Исходный V2 baseline `414d08c` | Подтверждён локально и на GitHub |
-| CP-00: мастер-документ | Закрывается коммитом, добавляющим этот файл; требуется подтвердить push |
-| CP-01: строгие модели и fixtures 2.0 | Не начат |
+| Исходный Professional Renderer V2 baseline `414d08c` | Подтверждён локально и на GitHub |
+| CP-00: мастер-документ | **Завершён**; commit `12fffcf4de4c4978ebfe66e7a549ab521fcf8105`, push подтверждён |
+| CP-01: строгие authoring-модели и fixtures | **Локальные проверки пройдены**; выполняется финальная фиксация commit/push |
 | CP-02: capability registry | Не начат |
 | CP-03: compiler dry-run | Не начат |
 | CP-04: preview | Не начат |
@@ -300,17 +336,19 @@ src/kadr_farm/visual_story_contract_v2/
 | CP-06: V2 renderer adapter | Не начат |
 | CP-07: E2E приёмка | Не начат |
 
-**Следующее разрешённое действие:** добавить и отправить этот документ отдельным коммитом CP-00. После подтверждения синхронизации GitHub разрешается CP-01. До этого новые runtime-файлы не создавать.
-
----
+**Следующее разрешённое действие:** завершить review, commit и push CP-01. До подтверждения удалённого commit не начинать CP-02 и не подключать новый пакет к production path.
 
 ## Appendix A. Ссылки на ключевые материалы
 
-- `docs/34_VISUAL_STORY_CONTRACT_V2_RU.md` — проект технического контракта 2.0.
-- `docs/32_VISUAL_STORY_TWO_PASS_CONTRACT_RU.md` — предыдущая спецификация двухпроходной режиссуры; конфликтующие квоты для 2.0 устарели.
-- `docs/30_VISUAL_STORYTELLING_PILOT_2026-11-18_RU.md` — выводы визуального пилота.
-- `docs/VISUAL_STORY_V2_PROFESSIONAL_RENDERER_RU.md` — текущий Professional Renderer V2.
-- `src/kadr_farm/visual_story.py` и `src/kadr_farm/visual_story_prompts.py` — независимый legacy contract 1.x, не заменять.
+- `docs/35_KADRFARM_STAGE_I_MASTER_PLAN_RU.md` — этот мастер-план; главный приоритет по направлению и checkpoint status.
+- `docs/36_VISUAL_STORY_2_CONTRACT_FREEZE_RU.md` — frozen authoring contract 2.0 и точные границы моделей.
+- `docs/34_VISUAL_STORY_CONTRACT_V2_RU.md` — исходная архитектурная спецификация/draft.
+- `docs/32_VISUAL_STORY_TWO_PASS_CONTRACT_RU.md` — прежняя двухпроходная спецификация; использовать только совместимые идеи, без квот 1.x.
+- `docs/30_VISUAL_STORYTELLING_PILOT_2026-11-18_RU.md` — выводы пилота.
+- `docs/VISUAL_STORY_V2_PROFESSIONAL_RENDERER_RU.md` — существующий Professional Renderer V2.
+- `src/kadr_farm/visual_story.py` и `visual_story_prompts.py` — legacy authoring contract 1.x.
+- `src/kadr_farm/visual_story_v2.py` — отдельный действующий runtime contract V2; не смешивать с новым authoring package.
+- `src/kadr_farm/visual_story_contract_v2/` — новый двухпроходный authoring contract Stage I.
 
 ## Appendix B. Зафиксированное сообщение проекта
 

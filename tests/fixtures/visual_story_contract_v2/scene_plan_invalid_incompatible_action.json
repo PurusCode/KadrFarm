@@ -1,0 +1,477 @@
+{
+  "schema_version": "2.0",
+  "scene_id": "s_001",
+  "source_text_sha256": "32d21c5f45d4767e055437efe9d0816828fc21cd51c3a22bb4b64aa1f28d79cf",
+  "scene_purpose": "Показать зрителю, что уверенный тон и достоверность — разные вещи.",
+  "shots": [
+    {
+      "shot_id": "s_001_shot_01",
+      "editorial_purpose": "Показать убедительную подачу ответа и отделить впечатление от проверки.",
+      "visual_summary": "На экране ноутбука выделен уверенно сформулированный ответ; рядом появляются значки источника и проверки, а затем возникает поясняющая схема.",
+      "speech_anchors": [
+        {
+          "anchor_id": "a_intro",
+          "source_scene_id": "s_001",
+          "char_start": 0,
+          "char_end": 50,
+          "text_excerpt": "Нейросеть уверенно отвечает, даже когда ошибается.",
+          "role": "opening"
+        }
+      ],
+      "composition": {
+        "layout_intent": "Медиаконтент служит фоном; заголовок доминирует сверху, графические маркеры и схема образуют второй смысловой слой.",
+        "objects": [
+          {
+            "object_id": "desk_video",
+            "kind": "video",
+            "role": "primary_media",
+            "layer": {
+              "z_index": 0,
+              "region": "full_frame",
+              "anchor": "center",
+              "size": "full",
+              "overlap_policy": "opaque"
+            },
+            "content": {
+              "subject": "Ноутбук на рабочем столе",
+              "scene": "Современное рабочее место",
+              "action": "Курсор перемещается по тексту ответа",
+              "shot_type": "close_up",
+              "camera_angle": "over_shoulder",
+              "mood": "focused",
+              "search_queries": [
+                "person reviewing AI answer on laptop close up",
+                "cursor moving through text on laptop screen"
+              ],
+              "orientation": "landscape",
+              "crop_intent": "экран и часть рук остаются видны",
+              "visual_constraints": [
+                "без читаемых брендов",
+                "без персональных данных"
+              ],
+              "desired_action": "Просмотр текста на экране",
+              "motion_intensity": "low",
+              "desired_duration": "medium",
+              "loop_allowed": false
+            },
+            "initial_state": "visible"
+          },
+          {
+            "object_id": "headline",
+            "kind": "text",
+            "role": "typography",
+            "layer": {
+              "z_index": 10,
+              "region": "top",
+              "anchor": "top_center",
+              "size": "large"
+            },
+            "content": {
+              "text": "УВЕРЕННЫЙ ОТВЕТ",
+              "semantic_role": "headline",
+              "emphasis_spans": [
+                {
+                  "char_start": 0,
+                  "char_end": 9,
+                  "text_excerpt": "УВЕРЕННЫЙ",
+                  "emphasis": "accent"
+                }
+              ],
+              "max_lines": 2,
+              "alignment": "center",
+              "hierarchy": "primary",
+              "text_source_ref": "editorial_copy:hook_title"
+            },
+            "initial_state": "visible"
+          },
+          {
+            "object_id": "answer_box",
+            "kind": "shape",
+            "role": "supporting",
+            "layer": {
+              "z_index": 5,
+              "region": "center",
+              "anchor": "center",
+              "size": "large"
+            },
+            "content": {
+              "shape_type": "rounded_rectangle",
+              "fill_role": "surface",
+              "stroke_role": "accent",
+              "stroke_weight": "thick"
+            },
+            "initial_state": "visible"
+          },
+          {
+            "object_id": "confidence_icon",
+            "kind": "icon",
+            "role": "annotation",
+            "layer": {
+              "z_index": 20,
+              "region": "right",
+              "anchor": "center_right",
+              "size": "medium"
+            },
+            "content": {
+              "icon_id": "shield-check",
+              "semantic_label": "Внешний признак уверенности",
+              "color_role": "accent",
+              "stroke_style": "outline"
+            }
+          },
+          {
+            "object_id": "warning_callout",
+            "kind": "callout",
+            "role": "annotation",
+            "layer": {
+              "z_index": 30,
+              "region": "bottom",
+              "anchor": "bottom_center",
+              "size": "medium"
+            },
+            "content": {
+              "text": "Уверенный тон — не доказательство",
+              "tone": "warning",
+              "shape": "pill",
+              "pointer_target_object_id": "answer_box"
+            }
+          },
+          {
+            "object_id": "fact_group",
+            "kind": "group",
+            "role": "supporting",
+            "layer": {
+              "z_index": 15,
+              "region": "center",
+              "anchor": "center",
+              "size": "large"
+            },
+            "content": {
+              "child_object_ids": [
+                "proof_shape",
+                "question_shape"
+              ],
+              "local_layout": "horizontal",
+              "clip_policy": "none",
+              "transform_origin": "center"
+            }
+          },
+          {
+            "object_id": "proof_shape",
+            "kind": "shape",
+            "role": "supporting",
+            "layer": {
+              "z_index": 16,
+              "region": "left",
+              "anchor": "center_left",
+              "size": "small"
+            },
+            "content": {
+              "shape_type": "circle",
+              "fill_role": "positive",
+              "stroke_role": "none"
+            }
+          },
+          {
+            "object_id": "question_shape",
+            "kind": "shape",
+            "role": "supporting",
+            "layer": {
+              "z_index": 17,
+              "region": "right",
+              "anchor": "center_right",
+              "size": "small"
+            },
+            "content": {
+              "shape_type": "circle",
+              "fill_role": "warning",
+              "stroke_role": "none"
+            }
+          },
+          {
+            "object_id": "evidence_graph",
+            "kind": "node_graph",
+            "role": "focal",
+            "layer": {
+              "z_index": 25,
+              "region": "bottom",
+              "anchor": "bottom_center",
+              "size": "large"
+            },
+            "content": {
+              "layout": "left_to_right",
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "label": "Ответ",
+                  "node_type": "source"
+                },
+                {
+                  "node_id": "source",
+                  "label": "Источник",
+                  "node_type": "process"
+                },
+                {
+                  "node_id": "check",
+                  "label": "Проверка",
+                  "node_type": "outcome"
+                }
+              ],
+              "edges": [
+                {
+                  "edge_id": "edge_answer_source",
+                  "from_node_id": "answer",
+                  "to_node_id": "source",
+                  "relation": "depends_on"
+                },
+                {
+                  "edge_id": "edge_source_check",
+                  "from_node_id": "source",
+                  "to_node_id": "check",
+                  "relation": "produces"
+                }
+              ],
+              "legend": []
+            }
+          },
+          {
+            "object_id": "illustrative_chart",
+            "kind": "chart",
+            "role": "supporting",
+            "layer": {
+              "z_index": 26,
+              "region": "right",
+              "anchor": "center_right",
+              "size": "medium"
+            },
+            "content": {
+              "chart_type": "bar",
+              "data_mode": "illustrative",
+              "title": "Условная оценка",
+              "categories": [
+                "A",
+                "B",
+                "C"
+              ],
+              "series": [
+                {
+                  "series_id": "confidence",
+                  "name": "Уверенность",
+                  "illustrative_values": [
+                    90.0,
+                    70.0,
+                    45.0
+                  ]
+                }
+              ],
+              "unit": "условные баллы",
+              "show_values": false,
+              "show_legend": false,
+              "animation_mode": "grow_bars",
+              "illustrative_label": "Условный пример, не измерение"
+            }
+          },
+          {
+            "object_id": "comparison_table",
+            "kind": "table",
+            "role": "supporting",
+            "layer": {
+              "z_index": 27,
+              "region": "left",
+              "anchor": "center_left",
+              "size": "medium"
+            },
+            "content": {
+              "data_mode": "illustrative",
+              "columns": [
+                {
+                  "column_id": "criterion",
+                  "title": "Критерий"
+                },
+                {
+                  "column_id": "status",
+                  "title": "Проверка"
+                }
+              ],
+              "rows": [
+                {
+                  "row_id": "row_source",
+                  "cells": [
+                    {
+                      "text": "Источник"
+                    },
+                    {
+                      "illustrative_value": "Не проверен"
+                    }
+                  ]
+                },
+                {
+                  "row_id": "row_date",
+                  "cells": [
+                    {
+                      "text": "Дата"
+                    },
+                    {
+                      "illustrative_value": "Условно"
+                    }
+                  ]
+                }
+              ],
+              "header_visible": true,
+              "reveal_mode": "row_by_row",
+              "highlighted_row_ids": [
+                "row_source"
+              ],
+              "illustrative_label": "Учебная иллюстрация"
+            }
+          },
+          {
+            "object_id": "formula",
+            "kind": "formula",
+            "role": "annotation",
+            "layer": {
+              "z_index": 28,
+              "region": "top",
+              "anchor": "top_right",
+              "size": "small"
+            },
+            "content": {
+              "expression": "evidence_count / claim_count",
+              "value_refs": [
+                "evidence_count",
+                "claim_count"
+              ],
+              "data_mode": "derived",
+              "unit": "ratio",
+              "explanation": "Доля проверенных утверждений"
+            }
+          },
+          {
+            "object_id": "counter",
+            "kind": "counter",
+            "role": "focal",
+            "layer": {
+              "z_index": 29,
+              "region": "bottom",
+              "anchor": "bottom_right",
+              "size": "medium"
+            },
+            "content": {
+              "data_mode": "illustrative",
+              "illustrative_value": 3.0,
+              "prefix": "",
+              "suffix": " шага",
+              "decimals": 0,
+              "illustrative_label": "Условный пример"
+            }
+          },
+          {
+            "object_id": "photo",
+            "kind": "image",
+            "role": "background",
+            "layer": {
+              "z_index": -1,
+              "region": "background",
+              "anchor": "center",
+              "size": "full",
+              "overlap_policy": "opaque"
+            },
+            "content": {
+              "subject": "Абстрактный экран с текстом",
+              "scene": "Темный интерфейс рабочего пространства",
+              "action": "Статичное изображение",
+              "shot_type": "wide",
+              "camera_angle": "front_view",
+              "mood": "neutral",
+              "search_queries": [
+                "abstract dark computer workspace screen"
+              ],
+              "orientation": "landscape",
+              "crop_intent": "без читаемых текстовых данных",
+              "visual_constraints": [
+                "без логотипов"
+              ]
+            }
+          }
+        ],
+        "spatial_relationships": [
+          {
+            "from_object_id": "proof_shape",
+            "to_object_id": "question_shape",
+            "relation": "contrasts_with",
+            "reason": "Два маркера визуально противопоставляют уверенность и сомнение."
+          }
+        ]
+      },
+      "events": [
+        {
+          "event_id": "ev_reveal_edge",
+          "action": "reveal_row",
+          "target": {
+            "object_id": "desk_video",
+            "subtarget_id": "row_x"
+          },
+          "trigger": {
+            "kind": "speech_anchor",
+            "anchor_id": "a_intro"
+          },
+          "timing": {
+            "duration": "brief",
+            "easing": "ease_out"
+          }
+        },
+        {
+          "event_id": "ev_count",
+          "action": "count_up",
+          "target": {
+            "object_id": "counter"
+          },
+          "trigger": {
+            "kind": "speech_anchor",
+            "anchor_id": "a_intro"
+          },
+          "timing": {
+            "duration": "medium",
+            "easing": "ease_out"
+          },
+          "from_value_ref": "start_count",
+          "to_value_ref": "end_count"
+        },
+        {
+          "event_id": "ev_zoom",
+          "action": "zoom",
+          "target": {
+            "object_id": "desk_video"
+          },
+          "trigger": {
+            "kind": "speech_anchor",
+            "anchor_id": "a_intro"
+          },
+          "timing": {
+            "duration": "long",
+            "easing": "ease_in_out"
+          },
+          "movement": "in"
+        }
+      ],
+      "continuity": {
+        "incoming": [],
+        "outgoing": [
+          {
+            "relation": "contrast",
+            "reference": {
+              "scene_id": "s_002",
+              "shot_id": "s_002_shot_01"
+            },
+            "reason": "Следующий shot намеренно противопоставит уверенное впечатление проверяемым основаниям."
+          }
+        ]
+      },
+      "fallback_policy": {
+        "asset_miss": "alternative_asset",
+        "unsupported_renderer_action": "block_execution",
+        "approved_visual_substitution": false
+      }
+    }
+  ]
+}

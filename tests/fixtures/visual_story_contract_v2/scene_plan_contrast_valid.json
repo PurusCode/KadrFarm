@@ -1,0 +1,95 @@
+{
+  "schema_version": "2.0",
+  "scene_id": "s_002",
+  "source_text_sha256": "c31d71ce749297329077ab7e9d8909773ccac818cfe02c623a25a695f6fd407c",
+  "scene_purpose": "Объяснить зрителю, что уверенность ответа не заменяет проверку источников.",
+  "shots": [
+    {
+      "shot_id": "s_002_shot_01",
+      "editorial_purpose": "Сломать первое впечатление и переключить внимание на проверяемые свидетельства.",
+      "visual_summary": "Убедительная композиция сменяется более строгой проверочной схемой: важны источник, дата и подтверждение, а не уверенная формулировка.",
+      "speech_anchors": [
+        {
+          "anchor_id": "a_contrast",
+          "source_scene_id": "s_002",
+          "char_start": 0,
+          "char_end": 55,
+          "text_excerpt": "Но убедительный тон не доказывает достоверность ответа.",
+          "role": "contrast"
+        }
+      ],
+      "composition": {
+        "layout_intent": "Минималистичная схема с тремя независимыми критериями проверки, расположенными горизонтально.",
+        "objects": [
+          {
+            "object_id": "source_card",
+            "kind": "text",
+            "role": "focal",
+            "layer": {
+              "region": "left",
+              "anchor": "center_left",
+              "size": "large"
+            },
+            "content": {
+              "text": "ИСТОЧНИК",
+              "semantic_role": "headline",
+              "alignment": "center",
+              "hierarchy": "primary"
+            }
+          },
+          {
+            "object_id": "date_card",
+            "kind": "text",
+            "role": "supporting",
+            "layer": {
+              "region": "center",
+              "anchor": "center",
+              "size": "large"
+            },
+            "content": {
+              "text": "ДАТА",
+              "semantic_role": "headline",
+              "alignment": "center",
+              "hierarchy": "secondary"
+            }
+          },
+          {
+            "object_id": "evidence_card",
+            "kind": "text",
+            "role": "supporting",
+            "layer": {
+              "region": "right",
+              "anchor": "center_right",
+              "size": "large"
+            },
+            "content": {
+              "text": "ПОДТВЕРЖДЕНИЕ",
+              "semantic_role": "headline",
+              "alignment": "center",
+              "hierarchy": "secondary"
+            }
+          }
+        ]
+      },
+      "events": [],
+      "continuity": {
+        "incoming": [
+          {
+            "relation": "contrast",
+            "reference": {
+              "scene_id": "s_001",
+              "shot_id": "s_001_shot_01"
+            },
+            "reason": "Контраст строится на смене визуального языка; ни один объект не обязан переходить в новую композицию."
+          }
+        ],
+        "outgoing": []
+      },
+      "fallback_policy": {
+        "asset_miss": "revise_director_plan",
+        "unsupported_renderer_action": "block_execution",
+        "approved_visual_substitution": false
+      }
+    }
+  ]
+}
