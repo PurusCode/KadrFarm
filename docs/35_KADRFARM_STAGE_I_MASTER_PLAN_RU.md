@@ -1,6 +1,6 @@
 # KadrFarm — главный план Stage I: Visual Story 2.0
 
-- **Версия документа:** 1.7
+- **Версия документа:** 1.8
 - **Дата создания:** 24.11.2026
 - **Дата обновления:** 25.11.2026
 - **Рабочая ветка:** `feature/autonomous-video-engine-2`
@@ -427,7 +427,9 @@ tests/fixtures/visual_story_contract_v2/
 
 ### CP-04 — Preview и проверка исполнимости
 
-- **Статус:** **локальная реализация, source-level review и приёмка завершены; отдельные commit и push ожидаются.**
+- **Статус:** **завершена; source-level review, локальная регрессионная и визуальная приёмка, отдельные commit и push подтверждены.**
+- **Commit:** `bf7a9ffae75c638a5d38b72294e8fca95ddf14b2` (`Implement bounded Visual Story V2 preview for CP-04`).
+- **Push:** `origin/feature/autonomous-video-engine-2` подтверждён; после push локальный и удалённый HEAD совпадают.
 - **Задача и границы:** ограниченный asset-free preview для существующего runtime `kadr_farm.visual_story_v2.VisualStoryPlan`; CP-01 authoring models и CP-03 `ExecutionPlan` не преобразуются, authoring → runtime adapter остаётся CP-06.
 - **Состав:** `src/kadr_farm/visual_story_preview_v2.py`, `tests/test_visual_story_preview_v2.py`, `examples/visual_story_v2_preview_cp04.json`, `docs/39_VISUAL_STORY_PREVIEW_CP04_RU.md` и этот мастер-документ.
 - **Результат Chromium:** 3 shots со статусом `passed`, создано 9 PNG snapshots, контактный лист и `preview_audit.json`; renderer — `professional_browser_v2`.
@@ -447,12 +449,12 @@ tests/fixtures/visual_story_contract_v2/
 | CP-01: строгие authoring-модели и fixtures | **Завершён**; commit `8884c9509a1310ae687e4f9d8e87d41394de3df9`, push подтверждён |
 | CP-02: capability registry | **Завершён**; commit `0d1930dcd3d82b8767e55d94e09536ec90127eae`, push подтверждён |
 | CP-03: compiler dry-run | **Завершён**; commit `37feccdd6353a80b64b28fcfc9975abace94cd42`, push подтверждён |
-| CP-04: preview | **Локальная реализация и приёмка завершены; commit/push ожидаются** |
+| CP-04: preview | **Завершён**; commit `bf7a9ffae75c638a5d38b72294e8fca95ddf14b2`, push подтверждён |
 | CP-05: Global/Scene Directors | Не начат |
 | CP-06: V2 renderer adapter | Не начат |
 | CP-07: E2E приёмка | Не начат |
 
-**Следующее разрешённое действие:** выполнить финальный просмотр и отдельный commit/push пяти файлов CP-04; после подтверждения совпадения локального и удалённого HEAD перейти к CP-05 — Global/Scene Directors.
+**Следующее разрешённое действие:** начать CP-05 — Global/Scene Directors. CP-04 завершена и опубликована отдельным commit `bf7a9ffae75c638a5d38b72294e8fca95ddf14b2`; локальная и удалённая ветки совпадают. Authoring → runtime adapter остаётся задачей CP-06; production path не переключается до прохождения соответствующего adapter gate.
 
 ## Appendix A. Ссылки на ключевые материалы
 
