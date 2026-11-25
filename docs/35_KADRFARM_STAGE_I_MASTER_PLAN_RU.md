@@ -1,7 +1,8 @@
 # KadrFarm — главный план Stage I: Visual Story 2.0
 
-- **Версия документа:** 1.4
+- **Версия документа:** 1.5
 - **Дата создания:** 24.11.2026
+- **Дата обновления:** 25.11.2026
 - **Рабочая ветка:** `feature/autonomous-video-engine-2`
 - **Исходная контрольная точка:** `414d08c9a4e8ef7748488e356d266ac62083be5a` (`Harden AutoFit dynamic state integrity`)
 - **Статус:** активный навигационный документ Stage I
@@ -227,9 +228,12 @@ tests/fixtures/visual_story_contract_v2/
 **Commit:** `8884c9509a1310ae687e4f9d8e87d41394de3df9` (`Freeze Visual Story 2.0 authoring contract`).
 **Push:** `origin/feature/autonomous-video-engine-2` подтверждён; после `git fetch origin` локальный `HEAD` и удалённая ветка совпали.
 
-**Следующий разрешённый шаг:** завершить commit/push CP-02 и подтвердить совпадение локального и удалённого HEAD; только затем начать CP-03 — детерминированный Scene Compiler и dry-run.
+**Следующий разрешённый шаг:** завершить commit/push CP-03 и подтвердить совпадение локального и удалённого HEAD; только затем перейти к CP-04 — Preview и проверка исполнимости.
 
 ### CP-02 — Renderer Capability Registry
+
+**Commit:** `0d1930dcd3d82b8767e55d94e09536ec90127eae` (`Implement renderer capability registry for CP-02`).
+**Push:** `origin/feature/autonomous-video-engine-2` подтверждён; удалённая ветка указывает на этот commit.
 
 **Задача:** описать реальные возможности существующих runtime V2 исполнителей и добавить детерминированный gate, который запрещает неподдерживаемые комбинации без молчаливой подмены.
 
@@ -260,7 +264,7 @@ tests/fixtures/visual_story_contract_v2/
 
 **Ограничения и non-goals:** реестр описывает существующие возможности, а не добавляет renderer features. Нет runtime/CLI/provider изменений, LLM/MWS вызовов, загрузки медиа, MP4 рендера или адаптера authoring → runtime. Стабильные subtarget IDs для внутренних элементов графика/таблицы/группы не поддерживаются. Полноценная компиляция authoring plans остаётся задачей CP-03 и следующих этапов.
 
-**Статус:** source-level review и локальная приёмка завершены; commit и push CP-02 ещё ожидаются. До подтверждённой синхронизации с GitHub переход к CP-03 запрещён.
+**Статус:** CP-02 завершена; source-level review, локальная приёмка, commit и push подтверждены.
 
 ### CP-03 — Детерминированный Scene Compiler и dry-run
 
@@ -269,6 +273,36 @@ tests/fixtures/visual_story_contract_v2/
 **Состав:** проверка ссылок и coverage, asset requests, render tasks, зависимости, речевые anchors, проверка capabilities и конфликтов, стабильный сериализуемый ExecutionPlan, fingerprints и resume-safe checkpoints.
 
 **Критерий выхода:** одинаковые входы и версии дают одинаковый план; ошибочные связи/действия блокируются; dry-run не скачивает медиа и не создаёт MP4.
+
+**Состав CP-03:**
+
+- `src/kadr_farm/visual_story_execution_plan_compiler_v2.py` — чистый детерминированный компилятор, версия `1.1.0`;
+- `tests/test_visual_story_execution_plan_compiler_v2.py` — 44 целевых теста;
+- `docs/38_VISUAL_STORY_EXECUTION_PLAN_COMPILER_CP03_RU.md` — архитектура, capability gates, fingerprints, checkpoint и ограничения.
+
+**Ключевые решения и guards:**
+
+- Один `RenderTask` представляет целую shot-композицию: `object_id="shot_composition"`. Это соответствует фактическому runtime API обоих исполнителей; фиктивные задачи на отдельные объекты не создаются.
+- Image/video получают отдельные `AssetRequest`; `CompilationResult.asset_bindings` явно связывает их с shot-level task.
+- Renderer выбирается только явно. Нет автоматического fallback, сетевых вызовов, LLM/MWS, скачивания медиа или рендера.
+- Проверяются CP-01 storyboard hash, покрытие сцен, source text hashes, speech anchors, continuity references, renderer capabilities и конфликтующие события.
+- Неподдерживаемые действия и параметры блокируются без aliasing или визуальной подмены. Pillow-specific guards учитывают начальные draw/table states, chart series, graph edges и глубину вложенных media.
+- Canonical JSON, task fingerprints и baseline checkpoint детерминированы; новый checkpoint не объявляет задачи завершёнными.
+
+**Проверки локальной приёмки:**
+
+- `py_compile` для CP-03 compiler и test — успешно;
+- целевые тесты — **44 passed**;
+- полный набор проекта — **548 passed**;
+- `git diff --check` — без замечаний.
+
+**Source-level review:** компилятор сверён с frozen CP-01 authoring contract, CP-02 capability registry и фактическими границами runtime V2 renderers/asset resolver. Старый `visual_scene_compiler_v2.py`, `visual_execution_v2.py`, runtime-модели, renderers, asset resolver, CLI и production pipeline не изменялись.
+
+**Статус:** локальная реализация, source-level review и регрессионная приёмка завершены; отдельные commit и push CP-03 ещё ожидаются.
+
+**Ограничения и non-goals:** CP-03 создаёт только dry-run dispatch plan. Он не является runtime adapter, не разрешает реальные assets/value refs, не вычисляет аудио-тайминг и не создаёт PNG/MP4. Authoring → runtime adapter остаётся CP-06; production path не переключается.
+
+
 
 ### CP-04 — Preview и проверка исполнимости
 
@@ -371,14 +405,14 @@ tests/fixtures/visual_story_contract_v2/
 | Исходный Professional Renderer V2 baseline `414d08c` | Подтверждён локально и на GitHub |
 | CP-00: мастер-документ | **Завершён**; commit `12fffcf4de4c4978ebfe66e7a549ab521fcf8105`, push подтверждён |
 | CP-01: строгие authoring-модели и fixtures | **Завершён**; commit `8884c9509a1310ae687e4f9d8e87d41394de3df9`, push подтверждён |
-| CP-02: capability registry | **Локальная приёмка завершена; commit/push ожидаются** |
-| CP-03: compiler dry-run | Не начат |
+| CP-02: capability registry | **Завершён**; commit `0d1930dcd3d82b8767e55d94e09536ec90127eae`, push подтверждён |
+| CP-03: compiler dry-run | **Локальная реализация и приёмка завершены; commit/push ожидаются** |
 | CP-04: preview | Не начат |
 | CP-05: Global/Scene Directors | Не начат |
 | CP-06: V2 renderer adapter | Не начат |
 | CP-07: E2E приёмка | Не начат |
 
-**Следующее разрешённое действие:** после commit/push CP-02 и проверки совпадения локального и удалённого HEAD начать CP-03 — детерминированный Scene Compiler и dry-run. Новый authoring contract по-прежнему не подключается к production path до отдельных CP-05/CP-06 gates.
+**Следующее разрешённое действие:** выполнить финальный просмотр diff CP-03, отдельно сохранить только три CP-03 файла и этот мастер-план в commit, выполнить push и подтвердить совпадение локального и удалённого HEAD. Только после этого перейти к CP-04. Новый authoring contract по-прежнему не подключается к production path до отдельных CP-05/CP-06 gates.
 
 ## Appendix A. Ссылки на ключевые материалы
 
