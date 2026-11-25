@@ -1,6 +1,6 @@
 # KadrFarm — главный план Stage I: Visual Story 2.0
 
-- **Версия документа:** 1.5
+- **Версия документа:** 1.7
 - **Дата создания:** 24.11.2026
 - **Дата обновления:** 25.11.2026
 - **Рабочая ветка:** `feature/autonomous-video-engine-2`
@@ -306,9 +306,21 @@ tests/fixtures/visual_story_contract_v2/
 
 ### CP-04 — Preview и проверка исполнимости
 
-**Задача:** создать preview для ограниченного, заранее определённого набора поддержанных композиционных типов.
+**Задача:** создать ограниченный asset-free preview, который реально исполняет выбранные композиции существующего Professional Browser Renderer V2 и показывает начальные, промежуточные и итоговые состояния.
 
-**Критерий выхода:** preview реально исполняет именно описанные объекты и состояния, не подменяет их; есть контактный лист/аудит, геометрия и читаемость проходят gates.
+**Входной контракт:** только существующий runtime `kadr_farm.visual_story_v2.VisualStoryPlan`. CP-01 authoring models и CP-03 `ExecutionPlan` не принимаются и не преобразуются; authoring → runtime adapter остаётся CP-06.
+
+**Исполнитель и проверки:** `professional_browser_v2`; существующий `ProfessionalBrowserRenderer.preflight_shot()` выполняет Chromium preflight, AutoFit и geometry QC без записи видео. Отдельный preview harness снимает PNG из того же подготовленного HTML, сверяет полный DOM object inventory (включая nested group children) и собирает contact sheet + JSON audit.
+
+**Ограниченный профиль:** kinds `text`, `shape`, `icon`, `callout`, `group`, `node_graph`, `chart`, `table`, `formula`, `counter`; chart subtypes только `bar`/`line`; разрешённые actions `appear`, `fade_in`, `fade_out`, `highlight`, `count_up`, `update_text`. Preview policy: не более 6 shots, 24 объектов и 8 событий на shot, расписание вместе с preview tail не длиннее 12 секунд.
+
+**Состав CP-04 candidate:** `src/kadr_farm/visual_story_preview_v2.py`, `tests/test_visual_story_preview_v2.py`, `examples/visual_story_v2_preview_cp04.json`, `docs/39_VISUAL_STORY_PREVIEW_CP04_RU.md` и этот мастер-документ.
+
+**Non-goals:** image/video и poster assets, asset resolver, сеть/Pixabay, MWS/LLM, WAV/TTS и measured audio timing, FFmpeg/MP4, существующий renderer/pipeline/CLI изменения, Pillow preview и production switch. Runtime preview offsets — только ручная шкала демонстрационных состояний, не audio sync.
+
+**Статус:** **локальная реализация, source-level review, целевая и полная регрессионная приёмка, реальный Chromium preview и визуальная проверка завершены; отдельные commit и push ожидаются.**
+
+**Критерий выхода:** целевые и полные тесты проходят; реальный sample preview создаёт PNG snapshots, контактный лист и аудит; capability gate не допускает неподдерживаемые комбинации; AutoFit `unresolved_count = 0`, geometry errors отсутствуют, DOM object IDs совпадают с runtime inventory, renderer не создаёт `.engine-error`; контактный лист визуально принят. Только после этого CP-04 может получить отдельный acceptance commit/push.
 
 ### CP-05 — Двухпроходный Global Director / Scene Director
 
@@ -413,6 +425,19 @@ tests/fixtures/visual_story_contract_v2/
 - **Остатки:** authoring → runtime adapter остаётся CP-06; CP-03 создаёт только dry-run dispatch plan и не подключается к production path.
 - **Следующий этап:** CP-04 — Preview и проверка исполнимости.
 
+### CP-04 — Preview и проверка исполнимости
+
+- **Статус:** **локальная реализация, source-level review и приёмка завершены; отдельные commit и push ожидаются.**
+- **Задача и границы:** ограниченный asset-free preview для существующего runtime `kadr_farm.visual_story_v2.VisualStoryPlan`; CP-01 authoring models и CP-03 `ExecutionPlan` не преобразуются, authoring → runtime adapter остаётся CP-06.
+- **Состав:** `src/kadr_farm/visual_story_preview_v2.py`, `tests/test_visual_story_preview_v2.py`, `examples/visual_story_v2_preview_cp04.json`, `docs/39_VISUAL_STORY_PREVIEW_CP04_RU.md` и этот мастер-документ.
+- **Результат Chromium:** 3 shots со статусом `passed`, создано 9 PNG snapshots, контактный лист и `preview_audit.json`; renderer — `professional_browser_v2`.
+- **Анимация:** `count_up` снимает отдельное состояние `progress` на 25% временного интервала; в проверочном примере начальное, промежуточное и финальное значения счётчика — `0`, `2`, `3`, а SHA-256 промежуточного и финального PNG различаются.
+- **Audit и визуальная проверка:** `policy_diagnostics` пуст; capability reports — `supported`; AutoFit `unresolved_count = 0`; geometry errors и warnings отсутствуют; DOM object IDs совпали с runtime inventory; `.engine-error` не обнаружен; контактный лист визуально принят.
+- **Проверки:** `py_compile` успешно; целевые тесты **15 passed**; полный набор проекта **563 passed**; реальный Chromium preview — `passed`; `git diff --check` без замечаний.
+- **Runtime / production изменения:** отсутствуют. Не использовались WAV/audio timing, сеть и внешние assets, MWS/LLM, FFmpeg/MP4; существующие renderer, AnimationEngine, runtime schema, CLI и production pipeline не переключались.
+- **Остатки и non-goals:** CP-04 проверяет ограниченный preview существующего runtime plan; она не реализует authoring → runtime adapter (CP-06), Global/Scene Directors (CP-05) или сквозной E2E production workflow (CP-07).
+- **Следующий этап:** CP-05 — Global/Scene Directors; начать его после отдельного commit/push CP-04 и подтверждения совпадения локального и удалённого HEAD.
+
 ## 10. Текущий рабочий статус
 
 | Контрольная точка | Статус |
@@ -422,12 +447,12 @@ tests/fixtures/visual_story_contract_v2/
 | CP-01: строгие authoring-модели и fixtures | **Завершён**; commit `8884c9509a1310ae687e4f9d8e87d41394de3df9`, push подтверждён |
 | CP-02: capability registry | **Завершён**; commit `0d1930dcd3d82b8767e55d94e09536ec90127eae`, push подтверждён |
 | CP-03: compiler dry-run | **Завершён**; commit `37feccdd6353a80b64b28fcfc9975abace94cd42`, push подтверждён |
-| CP-04: preview | Не начат |
+| CP-04: preview | **Локальная реализация и приёмка завершены; commit/push ожидаются** |
 | CP-05: Global/Scene Directors | Не начат |
 | CP-06: V2 renderer adapter | Не начат |
 | CP-07: E2E приёмка | Не начат |
 
-**Следующее разрешённое действие:** начать CP-04 — Preview и проверка исполнимости. CP-03 завершена и опубликована отдельным commit `37feccdd6353a80b64b28fcfc9975abace94cd42`; локальная и удалённая ветки совпадают. Новый authoring contract по-прежнему не подключается к production path до отдельных CP-05/CP-06 gates.
+**Следующее разрешённое действие:** выполнить финальный просмотр и отдельный commit/push пяти файлов CP-04; после подтверждения совпадения локального и удалённого HEAD перейти к CP-05 — Global/Scene Directors.
 
 ## Appendix A. Ссылки на ключевые материалы
 

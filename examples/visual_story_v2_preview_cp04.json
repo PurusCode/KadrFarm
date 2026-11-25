@@ -1,0 +1,437 @@
+{
+  "schema_version": "2.0",
+  "title": "CP-04 — проверка визуальных композиций",
+  "width": 1920,
+  "height": 1080,
+  "fps": 25,
+  "background": "#101827",
+  "style": {
+    "palette": [
+      "#F5F7FA",
+      "#AAB5C4",
+      "#6D9EFF",
+      "#18A999"
+    ],
+    "font_display": "Arial",
+    "font_body": "Arial",
+    "safe_area_margin": 0.04,
+    "grain_opacity": 0.015,
+    "vignette_opacity": 0.22
+  },
+  "speech_units": [
+    {
+      "unit_id": "preview_u01",
+      "text": "Preview-only composition one.",
+      "char_start": 0,
+      "char_end": 29
+    },
+    {
+      "unit_id": "preview_u02",
+      "text": "Preview-only composition two.",
+      "char_start": 29,
+      "char_end": 58
+    },
+    {
+      "unit_id": "preview_u03",
+      "text": "Preview-only composition three.",
+      "char_start": 58,
+      "char_end": 89
+    }
+  ],
+  "shots": [
+    {
+      "shot_id": "cp04_hierarchy",
+      "editorial_purpose": "Проверить текстовую и композиционную иерархию",
+      "visual_summary": "Заголовок, callout, знак и сгруппированный элемент образуют одну композицию",
+      "speech_unit_ids": [
+        "preview_u01"
+      ],
+      "objects": [
+        {
+          "object_id": "hierarchy_title",
+          "kind": "text",
+          "role": "headline",
+          "layer": {
+            "x": 0.48,
+            "y": 0.18,
+            "width": 0.82,
+            "height": 0.2,
+            "z_index": 4
+          },
+          "content": {
+            "text": "СЛОЖНОЕ — В СИСТЕМУ",
+            "eyebrow": "ВИЗУАЛЬНЫЙ ПРИНЦИП",
+            "subtitle": "Сначала структура, затем детали",
+            "font_size": 78,
+            "font_weight": 820,
+            "alignment": "left",
+            "vertical_align": "center",
+            "line_height": 1.0
+          },
+          "appearance": {
+            "color": "#F5F7FA",
+            "shadow": true
+          }
+        },
+        {
+          "object_id": "principle_panel",
+          "kind": "shape",
+          "role": "background",
+          "layer": {
+            "x": 0.34,
+            "y": 0.61,
+            "width": 0.48,
+            "height": 0.34,
+            "z_index": 1
+          },
+          "content": {
+            "shape_type": "rounded_rectangle",
+            "radius": 28
+          },
+          "appearance": {
+            "fill": "#1B2A3D",
+            "stroke": "#344A63",
+            "stroke_width": 2
+          }
+        },
+        {
+          "object_id": "main_callout",
+          "kind": "callout",
+          "role": "explanation",
+          "layer": {
+            "x": 0.34,
+            "y": 0.61,
+            "width": 0.43,
+            "height": 0.28,
+            "z_index": 2
+          },
+          "initial_state": "hidden",
+          "content": {
+            "eyebrow": "ОСНОВНОЙ ТЕЗИС",
+            "text": "Каждый элемент должен объяснять мысль, а не просто занимать место."
+          }
+        },
+        {
+          "object_id": "status_icon",
+          "kind": "icon",
+          "role": "status",
+          "layer": {
+            "x": 0.83,
+            "y": 0.34,
+            "width": 0.11,
+            "height": 0.16,
+            "z_index": 5
+          },
+          "content": {
+            "icon_id": "check"
+          }
+        },
+        {
+          "object_id": "process_group",
+          "kind": "group",
+          "role": "supporting",
+          "layer": {
+            "x": 0.8,
+            "y": 0.77,
+            "width": 0.3,
+            "height": 0.22,
+            "z_index": 3
+          },
+          "content": {
+            "children": [
+              {
+                "object_id": "group_card",
+                "kind": "shape",
+                "role": "background",
+                "layer": {
+                  "x": 0.5,
+                  "y": 0.5,
+                  "width": 0.98,
+                  "height": 0.9,
+                  "z_index": 1
+                },
+                "content": {
+                  "shape_type": "rounded_rectangle",
+                  "radius": 20
+                },
+                "appearance": {
+                  "fill": "#24364C",
+                  "stroke": "#3B5875",
+                  "stroke_width": 2
+                }
+              },
+              {
+                "object_id": "group_label",
+                "kind": "text",
+                "role": "label",
+                "layer": {
+                  "x": 0.5,
+                  "y": 0.5,
+                  "width": 0.9,
+                  "height": 0.72,
+                  "z_index": 2
+                },
+                "content": {
+                  "text": "СБОР → АНАЛИЗ",
+                  "font_size": 28,
+                  "font_weight": 800,
+                  "alignment": "center"
+                },
+                "appearance": {
+                  "color": "#F5F7FA"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "events": [
+        {
+          "event_id": "callout_reveal",
+          "target_id": "main_callout",
+          "action": "fade_in",
+          "anchor": {
+            "unit_id": "preview_u01",
+            "offset_sec": 0.15
+          },
+          "duration_sec": 0.65
+        },
+        {
+          "event_id": "icon_highlight",
+          "target_id": "status_icon",
+          "action": "highlight",
+          "anchor": {
+            "unit_id": "preview_u01",
+            "offset_sec": 0.45
+          },
+          "duration_sec": 0.7,
+          "params": {
+            "color": "#18A999"
+          }
+        },
+        {
+          "event_id": "headline_update",
+          "target_id": "hierarchy_title",
+          "action": "update_text",
+          "anchor": {
+            "unit_id": "preview_u01",
+            "offset_sec": 0.9
+          },
+          "duration_sec": 0.1,
+          "params": {
+            "text": "ОТ СМЫСЛА К КОМПОЗИЦИИ"
+          }
+        }
+      ]
+    },
+    {
+      "shot_id": "cp04_data",
+      "editorial_purpose": "Проверить график и табличное представление",
+      "visual_summary": "Иллюстративные ряды и короткая таблица находятся в одной системе",
+      "speech_unit_ids": [
+        "preview_u02"
+      ],
+      "objects": [
+        {
+          "object_id": "preview_chart",
+          "kind": "chart",
+          "role": "explanation",
+          "layer": {
+            "x": 0.27,
+            "y": 0.54,
+            "width": 0.46,
+            "height": 0.62,
+            "z_index": 2
+          },
+          "content": {
+            "chart_type": "bar",
+            "data_mode": "illustrative",
+            "title": "Пример динамики",
+            "subtitle": "Условные значения, не измерения",
+            "categories": [
+              "A",
+              "B",
+              "C"
+            ],
+            "unit": "",
+            "show_grid": true,
+            "series": [
+              {
+                "name": "Серия A",
+                "values": [
+                  12,
+                  26,
+                  38
+                ]
+              },
+              {
+                "name": "Серия B",
+                "values": [
+                  18,
+                  31,
+                  44
+                ]
+              }
+            ],
+            "colors": [
+              "#6D9EFF",
+              "#18A999"
+            ]
+          }
+        },
+        {
+          "object_id": "preview_table",
+          "kind": "table",
+          "role": "supporting",
+          "layer": {
+            "x": 0.75,
+            "y": 0.53,
+            "width": 0.42,
+            "height": 0.48,
+            "z_index": 3
+          },
+          "content": {
+            "columns": [
+              {
+                "title": "Этап"
+              },
+              {
+                "title": "Результат"
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  "План",
+                  "Сформирован"
+                ]
+              },
+              {
+                "cells": [
+                  "Проверка",
+                  "Пройдена"
+                ]
+              },
+              {
+                "cells": [
+                  "Preview",
+                  "Снят"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "shot_id": "cp04_process",
+      "editorial_purpose": "Проверить числовой, формульный и графовый объекты",
+      "visual_summary": "Счётчик и формула поясняют входы и результат процесса",
+      "speech_unit_ids": [
+        "preview_u03"
+      ],
+      "objects": [
+        {
+          "object_id": "preview_counter",
+          "kind": "counter",
+          "role": "metric",
+          "layer": {
+            "x": 0.22,
+            "y": 0.28,
+            "width": 0.3,
+            "height": 0.27,
+            "z_index": 3
+          },
+          "content": {
+            "value": 0,
+            "label": "ШАГА В ПРИМЕРЕ",
+            "font_size": 112
+          }
+        },
+        {
+          "object_id": "preview_formula",
+          "kind": "formula",
+          "role": "explanation",
+          "layer": {
+            "x": 0.23,
+            "y": 0.72,
+            "width": 0.36,
+            "height": 0.26,
+            "z_index": 2
+          },
+          "content": {
+            "expression": "A + B → C",
+            "caption": "Смысловая связь"
+          }
+        },
+        {
+          "object_id": "preview_graph",
+          "kind": "node_graph",
+          "role": "process",
+          "layer": {
+            "x": 0.65,
+            "y": 0.54,
+            "width": 0.55,
+            "height": 0.6,
+            "z_index": 2
+          },
+          "content": {
+            "layout": "left_to_right",
+            "nodes": [
+              {
+                "node_id": "input",
+                "label": "ВХОД",
+                "subtitle": "данные",
+                "x": 0.15,
+                "y": 0.5
+              },
+              {
+                "node_id": "process",
+                "label": "ОБРАБОТКА",
+                "subtitle": "правила",
+                "x": 0.5,
+                "y": 0.5
+              },
+              {
+                "node_id": "result",
+                "label": "РЕЗУЛЬТАТ",
+                "subtitle": "выход",
+                "x": 0.85,
+                "y": 0.5
+              }
+            ],
+            "edges": [
+              {
+                "from": "input",
+                "to": "process"
+              },
+              {
+                "from": "process",
+                "to": "result"
+              }
+            ]
+          }
+        }
+      ],
+      "events": [
+        {
+          "event_id": "counter_count_up",
+          "target_id": "preview_counter",
+          "action": "count_up",
+          "anchor": {
+            "unit_id": "preview_u03",
+            "offset_sec": 0.15
+          },
+          "duration_sec": 0.8,
+          "params": {
+            "from": 0,
+            "to": 3,
+            "decimals": 0,
+            "suffix": ""
+          }
+        }
+      ]
+    }
+  ]
+}
