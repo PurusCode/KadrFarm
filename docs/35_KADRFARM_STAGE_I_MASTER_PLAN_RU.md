@@ -228,7 +228,7 @@ tests/fixtures/visual_story_contract_v2/
 **Commit:** `8884c9509a1310ae687e4f9d8e87d41394de3df9` (`Freeze Visual Story 2.0 authoring contract`).
 **Push:** `origin/feature/autonomous-video-engine-2` подтверждён; после `git fetch origin` локальный `HEAD` и удалённая ветка совпали.
 
-**Следующий разрешённый шаг:** завершить commit/push CP-03 и подтвердить совпадение локального и удалённого HEAD; только затем перейти к CP-04 — Preview и проверка исполнимости.
+**Следующий разрешённый шаг:** CP-02 — Renderer Capability Registry.
 
 ### CP-02 — Renderer Capability Registry
 
@@ -298,7 +298,7 @@ tests/fixtures/visual_story_contract_v2/
 
 **Source-level review:** компилятор сверён с frozen CP-01 authoring contract, CP-02 capability registry и фактическими границами runtime V2 renderers/asset resolver. Старый `visual_scene_compiler_v2.py`, `visual_execution_v2.py`, runtime-модели, renderers, asset resolver, CLI и production pipeline не изменялись.
 
-**Статус:** локальная реализация, source-level review и регрессионная приёмка завершены; отдельные commit и push CP-03 ещё ожидаются.
+**Статус:** **завершена; source-level review, локальная приёмка, отдельный commit и push подтверждены.**
 
 **Ограничения и non-goals:** CP-03 создаёт только dry-run dispatch plan. Он не является runtime adapter, не разрешает реальные assets/value refs, не вычисляет аудио-тайминг и не создаёт PNG/MP4. Authoring → runtime adapter остаётся CP-06; production path не переключается.
 
@@ -386,17 +386,32 @@ tests/fixtures/visual_story_contract_v2/
 
 ### CP-02 — Renderer Capability Registry
 
-- **Статус:** локальная реализация, source-level review и регрессионная приёмка завершены; commit/push ожидаются.
+- **Статус:** **завершена; source-level review, локальная приёмка, отдельный commit и push подтверждены.**
 - **Почему:** CP-03 должен опираться на фактическую матрицу исполнителей, а не на предположения о поддержке объектов и анимаций.
 - **Файлы:** `src/kadr_farm/visual_capability_registry_v2.py`, `tests/test_visual_capability_registry_v2.py`, `docs/37_RENDERER_CAPABILITY_REGISTRY_V2_RU.md` и этот мастер-документ.
 - **Исполнители:** `professional_browser_v2` и `pillow_animation_v2`; legacy `diagram_renderer.py` / `html_renderer.py` документированы отдельно и не объявлены runtime V2 targets.
 - **Source-level review:** устранены ложноположительные capabilities Pillow area/multi-series charts; уточнена поддержка group `appear`; добавлены guards для неполного начального draw/table state и структуры graph/polygon/chart/table payloads.
 - **Runtime изменения:** отсутствуют. Production renderer, AnimationEngine, asset resolver, runtime schema, CLI, provider routing и старый production path не изменялись.
 - **Проверки:** `py_compile` успешно; целевые тесты **67 passed in 0.27s**; полный набор **504 passed in 8.41s**; `git diff --check` без замечаний.
-- **Commit / push:** ожидаются; SHA и совпадение локальной/удалённой веток будут внесены после отдельного commit и `git fetch origin`.
+- **Commit:** `0d1930dcd3d82b8767e55d94e09536ec90127eae` (`Implement renderer capability registry for CP-02`).
+- **Push:** `origin/feature/autonomous-video-engine-2` подтверждён; удалённая ветка указывает на этот commit.
 - **Остатки:** нет интеграции authoring → runtime, нет compiler/dry-run и нет production переключения. Неподдерживаемые subtargets и отличия исполнителей должны учитываться CP-03.
 - **Следующий этап:** CP-03 — детерминированный Scene Compiler и dry-run, только после подтверждённого push CP-02.
 
+
+### CP-03 — Детерминированный Scene Compiler и dry-run
+
+- **Статус:** **завершён; source-level review, локальная регрессионная приёмка, отдельный commit и push подтверждены**.
+- **Почему:** создать детерминированную компиляцию Global/Scene Plans в dry-run ExecutionPlan, опирающуюся на frozen CP-01 contract и фактические CP-02 renderer capabilities.
+- **Файлы:** `src/kadr_farm/visual_story_execution_plan_compiler_v2.py`, `tests/test_visual_story_execution_plan_compiler_v2.py`, `docs/38_VISUAL_STORY_EXECUTION_PLAN_COMPILER_CP03_RU.md` и этот мастер-документ.
+- **Ключевые решения:** один `RenderTask` представляет целую shot-композицию (`object_id="shot_composition"`); Image/Video `AssetRequest` связываются с shot-level task через `CompilationResult.asset_bindings`; renderer выбирается явно, без fallback.
+- **Guards:** проверяются storyboard/source hashes, scene coverage, speech anchors, continuity references, capabilities и конфликты; неподдерживаемые операции блокируются без silent substitution. Canonical JSON, task fingerprints и baseline checkpoints детерминированы.
+- **Runtime / production изменения:** отсутствуют. Нет LLM/MWS, сети, скачивания медиа, разрешения реальных assets, WAV timing, PNG/MP4 render, CLI или переключения production path. Старые compiler/execution и renderer modules не изменялись.
+- **Проверки:** `py_compile` успешно; целевые тесты **44 passed**; полный набор проекта **548 passed**; `git diff --check` без замечаний; source-level review относительно CP-01, CP-02 и фактического runtime API завершён.
+- **Commit:** `37feccdd6353a80b64b28fcfc9975abace94cd42` (`Implement deterministic CP-03 execution plan compiler`).
+- **Push:** `origin/feature/autonomous-video-engine-2` подтверждён; после push локальный и удалённый HEAD совпали.
+- **Остатки:** authoring → runtime adapter остаётся CP-06; CP-03 создаёт только dry-run dispatch plan и не подключается к production path.
+- **Следующий этап:** CP-04 — Preview и проверка исполнимости.
 
 ## 10. Текущий рабочий статус
 
@@ -406,13 +421,13 @@ tests/fixtures/visual_story_contract_v2/
 | CP-00: мастер-документ | **Завершён**; commit `12fffcf4de4c4978ebfe66e7a549ab521fcf8105`, push подтверждён |
 | CP-01: строгие authoring-модели и fixtures | **Завершён**; commit `8884c9509a1310ae687e4f9d8e87d41394de3df9`, push подтверждён |
 | CP-02: capability registry | **Завершён**; commit `0d1930dcd3d82b8767e55d94e09536ec90127eae`, push подтверждён |
-| CP-03: compiler dry-run | **Локальная реализация и приёмка завершены; commit/push ожидаются** |
+| CP-03: compiler dry-run | **Завершён**; commit `37feccdd6353a80b64b28fcfc9975abace94cd42`, push подтверждён |
 | CP-04: preview | Не начат |
 | CP-05: Global/Scene Directors | Не начат |
 | CP-06: V2 renderer adapter | Не начат |
 | CP-07: E2E приёмка | Не начат |
 
-**Следующее разрешённое действие:** выполнить финальный просмотр diff CP-03, отдельно сохранить только три CP-03 файла и этот мастер-план в commit, выполнить push и подтвердить совпадение локального и удалённого HEAD. Только после этого перейти к CP-04. Новый authoring contract по-прежнему не подключается к production path до отдельных CP-05/CP-06 gates.
+**Следующее разрешённое действие:** начать CP-04 — Preview и проверка исполнимости. CP-03 завершена и опубликована отдельным commit `37feccdd6353a80b64b28fcfc9975abace94cd42`; локальная и удалённая ветки совпадают. Новый authoring contract по-прежнему не подключается к production path до отдельных CP-05/CP-06 gates.
 
 ## Appendix A. Ссылки на ключевые материалы
 
