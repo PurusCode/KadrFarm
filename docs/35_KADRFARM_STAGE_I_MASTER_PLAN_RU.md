@@ -1,6 +1,6 @@
 # KadrFarm — главный план Stage I: Visual Story 2.0
 
-- **Версия документа:** 1.2
+- **Версия документа:** 1.3
 - **Дата создания:** 24.11.2026
 - **Рабочая ветка:** `feature/autonomous-video-engine-2`
 - **Исходная контрольная точка:** `414d08c9a4e8ef7748488e356d266ac62083be5a` (`Harden AutoFit dynamic state integrity`)
@@ -222,9 +222,12 @@ tests/fixtures/visual_story_contract_v2/
 
 **Не входит:** LLM/MWS-вызовы, Pixabay, реальный capability registry, compiler implementation, actual render, FFmpeg, production CLI, provider routing и изменение existing runtime V2.
 
-**Статус:** локальные критерии CP-01 пройдены; выполняется финальное stage/review. Контрольная точка будет окончательно закрыта только после отдельного commit и подтверждённого push.
+**Статус:** **завершена**; локальная приёмка, отдельный commit и push подтверждены.
 
-**Следующий шаг:** завершить commit/push CP-01. Только после подтверждения удалённой ветки разрешается CP-02 — реестр реальных возможностей renderers.
+**Commit:** `8884c9509a1310ae687e4f9d8e87d41394de3df9` (`Freeze Visual Story 2.0 authoring contract`).
+**Push:** `origin/feature/autonomous-video-engine-2` подтверждён; после `git fetch origin` локальный `HEAD` и удалённая ветка совпали.
+
+**Следующий разрешённый шаг:** CP-02 — инвентаризация и формализация реальных renderer capabilities.
 
 ### CP-02 — Renderer Capability Registry
 
@@ -314,13 +317,15 @@ tests/fixtures/visual_story_contract_v2/
 
 ### CP-01 — Заморозка authoring contract 2.0
 
-- **Статус:** локальные acceptance checks пройдены; commit/push ожидаются.
+- **Статус:** **завершён; commit и push подтверждены**.
 - **Почему:** строго разделить новый двухпроходный authoring contract, legacy 1.x и действующий runtime V2.
 - **Файлы:** 8 модулей нового пакета, 8 JSON fixtures, 1 тестовый модуль, `docs/36_VISUAL_STORY_2_CONTRACT_FREEZE_RU.md`, этот мастер-документ.
 - **Runtime изменения:** нет; существующие renderers, CLI, production path и provider routing не менялись.
-- **Проверки:** compileall успешно; целевые тесты 49/49; полный набор 437/437; `git diff --check` без whitespace ошибок.
-- **Commit / push:** будут вписаны после создания и проверки отдельного CP-01 коммита.
-- **Следующий этап:** CP-02 только после подтверждения push CP-01.
+- **Проверки:** `compileall` успешно; целевые тесты **49 passed in 0.28s**; полный набор **437 passed in 11.24s**; `git diff --check` без whitespace ошибок (Git показал только уведомление Windows LF/CRLF).
+- **Commit:** `8884c9509a1310ae687e4f9d8e87d41394de3df9` (`Freeze Visual Story 2.0 authoring contract`).
+- **Push:** подтверждён в `origin/feature/autonomous-video-engine-2`; после `git fetch origin` локальный `HEAD` и remote HEAD совпали.
+- **Остаток:** прежние untracked installers, diagnostics и `.bak` сохранены и не включены в commit.
+- **Следующий этап:** CP-02 — Renderer Capability Registry.
 
 ## 10. Текущий рабочий статус
 
@@ -328,7 +333,7 @@ tests/fixtures/visual_story_contract_v2/
 |---|---|
 | Исходный Professional Renderer V2 baseline `414d08c` | Подтверждён локально и на GitHub |
 | CP-00: мастер-документ | **Завершён**; commit `12fffcf4de4c4978ebfe66e7a549ab521fcf8105`, push подтверждён |
-| CP-01: строгие authoring-модели и fixtures | **Локальные проверки пройдены**; выполняется финальная фиксация commit/push |
+| CP-01: строгие authoring-модели и fixtures | **Завершён**; commit `8884c9509a1310ae687e4f9d8e87d41394de3df9`, push подтверждён |
 | CP-02: capability registry | Не начат |
 | CP-03: compiler dry-run | Не начат |
 | CP-04: preview | Не начат |
@@ -336,7 +341,7 @@ tests/fixtures/visual_story_contract_v2/
 | CP-06: V2 renderer adapter | Не начат |
 | CP-07: E2E приёмка | Не начат |
 
-**Следующее разрешённое действие:** завершить review, commit и push CP-01. До подтверждения удалённого commit не начинать CP-02 и не подключать новый пакет к production path.
+**Следующее разрешённое действие:** начать CP-02 — инвентаризацию реальных renderer capabilities. Новый authoring contract по-прежнему не подключается к production path до отдельных CP-05/CP-06 gates.
 
 ## Appendix A. Ссылки на ключевые материалы
 

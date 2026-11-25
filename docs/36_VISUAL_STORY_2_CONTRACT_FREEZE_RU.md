@@ -2,7 +2,7 @@
 
 - **Версия контракта:** 2.0
 - **Дата фиксации проектного решения:** 24.11.2026
-- **Статус:** локальные acceptance checks пройдены; commit/push CP-01 ожидаются
+- **Статус:** **принят; CP-01 завершена, commit и push подтверждены**
 - **Пакет:** `src/kadr_farm/visual_story_contract_v2/`
 - **Тесты:** `tests/test_visual_story_contract_v2.py`
 - **Главный маршрутный документ:** `docs/35_KADRFARM_STAGE_I_MASTER_PLAN_RU.md`
@@ -190,4 +190,4 @@ CP-01 добавляет только новый пакет, fixture/tests и д
 
 Локальные acceptance checks владельца проекта 24.11.2026: `compileall` успешно; целевые тесты **49 passed in 0.28s**; полный набор **437 passed in 11.24s**; `git diff --check` не обнаружил whitespace ошибок (только уведомление Git о Windows LF/CRLF).
 
-CP-01 окончательно закрывается после проверки точного состава staged-файлов, отдельного commit и подтверждённого push. До этого новый пакет остаётся изолированным authoring contract и не подключается к production path.
+CP-01 окончательно закрыта: точный состав из 19 файлов проверен, commit `8884c9509a1310ae687e4f9d8e87d41394de3df9` создан, push подтверждён и локальная ветка синхронизирована с `origin/feature/autonomous-video-engine-2`. Новый пакет остаётся изолированным authoring contract и не подключается к production path.
