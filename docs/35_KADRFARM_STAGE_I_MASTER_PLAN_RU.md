@@ -1,6 +1,6 @@
 # KadrFarm — главный план Stage I: Visual Story 2.0
 
-- **Версия документа:** 1.3
+- **Версия документа:** 1.4
 - **Дата создания:** 24.11.2026
 - **Рабочая ветка:** `feature/autonomous-video-engine-2`
 - **Исходная контрольная точка:** `414d08c9a4e8ef7748488e356d266ac62083be5a` (`Harden AutoFit dynamic state integrity`)
@@ -227,17 +227,40 @@ tests/fixtures/visual_story_contract_v2/
 **Commit:** `8884c9509a1310ae687e4f9d8e87d41394de3df9` (`Freeze Visual Story 2.0 authoring contract`).
 **Push:** `origin/feature/autonomous-video-engine-2` подтверждён; после `git fetch origin` локальный `HEAD` и удалённая ветка совпали.
 
-**Следующий разрешённый шаг:** CP-02 — инвентаризация и формализация реальных renderer capabilities.
+**Следующий разрешённый шаг:** завершить commit/push CP-02 и подтвердить совпадение локального и удалённого HEAD; только затем начать CP-03 — детерминированный Scene Compiler и dry-run.
 
 ### CP-02 — Renderer Capability Registry
 
-**Задача:** описать реальную, а не желаемую поддержку каждого действующего исполнителя.
+**Задача:** описать реальные возможности существующих runtime V2 исполнителей и добавить детерминированный gate, который запрещает неподдерживаемые комбинации без молчаливой подмены.
 
-**Состав:** реестр kinds, actions, subtargets, chart types, limits, media formats и renderer versions; capability validator; тесты отказа на неподдерживаемых объектах/действиях.
+**Состав CP-02:**
 
-**Правило:** сначала отражаем фактически поддерживаемые возможности Professional Renderer V2 и существующих исполнителей. Новые возможности не объявляются поддержанными до реализации и тестов.
+- `src/kadr_farm/visual_capability_registry_v2.py` — версия реестра `1.0.0`, два runtime исполнителя (`professional_browser_v2`, `pillow_animation_v2`), kinds/actions/subtypes, форматы, источники медиа, ограничения, validator и структурные guardrails;
+- `tests/test_visual_capability_registry_v2.py` — 67 целевых тестов;
+- `docs/37_RENDERER_CAPABILITY_REGISTRY_V2_RU.md` — инвентаризация, ограничения и API;
+- никаких изменений в production renderer, AnimationEngine, asset resolvers, runtime-модели, CLI или pipeline.
 
-**Критерий выхода:** каждый объект/action в плане либо имеет конкретный исполнитель, либо получает явную блокирующую диагностику.
+**Фактические исполнители:** Professional Browser Renderer V2 — основной runtime executor; Pillow SceneRenderer + AnimationEngine V2 — альтернативный frame executor. Исторические `diagram_renderer.py` и `html_renderer.py` оставлены в отдельном legacy inventory, поскольку принимают не runtime `VisualStoryPlan`, а legacy scene/beat dictionaries.
+
+**Результаты source-level review и hardening:**
+
+- Pillow `area` исключён из поддерживаемых chart subtypes: существующая ветка фактически рисовала линию без area fill.
+- Multi-series bar в Pillow и multi-series pie/donut в обоих исполнителях блокируются: текущие ветви renderer используют только первый series.
+- `appear` для Pillow group зарегистрирован как поддержанный: `visible` проверяется до рекурсивной отрисовки детей. Остальные group actions Pillow не поддерживает.
+- Проверяются события `draw` для top-level Pillow line/arrow, bar/line charts и node graph, если начальное состояние иначе оставляет прогрессивные элементы неполными; для top-level Pillow table требуется раскрытие последней строки.
+- Добавлены структурные проверки node graph (непустые уникальные строковые IDs и существующие ссылки рёбер), polygon points, chart series/values, table columns/rows, row subtargets, media motion и несовместимой геометрии Pillow line/arrow.
+- Валидация явно различает runtime contract `visual_story_v2.py` и новый authoring contract `visual_story_contract_v2/`; прямого подключения или адаптера пока нет.
+
+**Проверки локальной приёмки:**
+
+- `py_compile` для реестра и его тестов — успешно;
+- `python -m pytest -q tests/test_visual_capability_registry_v2.py` — **67 passed in 0.27s**;
+- `python -m pytest -q` — **504 passed in 8.41s**;
+- `git diff --check` — без замечаний.
+
+**Ограничения и non-goals:** реестр описывает существующие возможности, а не добавляет renderer features. Нет runtime/CLI/provider изменений, LLM/MWS вызовов, загрузки медиа, MP4 рендера или адаптера authoring → runtime. Стабильные subtarget IDs для внутренних элементов графика/таблицы/группы не поддерживаются. Полноценная компиляция authoring plans остаётся задачей CP-03 и следующих этапов.
+
+**Статус:** source-level review и локальная приёмка завершены; commit и push CP-02 ещё ожидаются. До подтверждённой синхронизации с GitHub переход к CP-03 запрещён.
 
 ### CP-03 — Детерминированный Scene Compiler и dry-run
 
@@ -327,6 +350,20 @@ tests/fixtures/visual_story_contract_v2/
 - **Остаток:** прежние untracked installers, diagnostics и `.bak` сохранены и не включены в commit.
 - **Следующий этап:** CP-02 — Renderer Capability Registry.
 
+### CP-02 — Renderer Capability Registry
+
+- **Статус:** локальная реализация, source-level review и регрессионная приёмка завершены; commit/push ожидаются.
+- **Почему:** CP-03 должен опираться на фактическую матрицу исполнителей, а не на предположения о поддержке объектов и анимаций.
+- **Файлы:** `src/kadr_farm/visual_capability_registry_v2.py`, `tests/test_visual_capability_registry_v2.py`, `docs/37_RENDERER_CAPABILITY_REGISTRY_V2_RU.md` и этот мастер-документ.
+- **Исполнители:** `professional_browser_v2` и `pillow_animation_v2`; legacy `diagram_renderer.py` / `html_renderer.py` документированы отдельно и не объявлены runtime V2 targets.
+- **Source-level review:** устранены ложноположительные capabilities Pillow area/multi-series charts; уточнена поддержка group `appear`; добавлены guards для неполного начального draw/table state и структуры graph/polygon/chart/table payloads.
+- **Runtime изменения:** отсутствуют. Production renderer, AnimationEngine, asset resolver, runtime schema, CLI, provider routing и старый production path не изменялись.
+- **Проверки:** `py_compile` успешно; целевые тесты **67 passed in 0.27s**; полный набор **504 passed in 8.41s**; `git diff --check` без замечаний.
+- **Commit / push:** ожидаются; SHA и совпадение локальной/удалённой веток будут внесены после отдельного commit и `git fetch origin`.
+- **Остатки:** нет интеграции authoring → runtime, нет compiler/dry-run и нет production переключения. Неподдерживаемые subtargets и отличия исполнителей должны учитываться CP-03.
+- **Следующий этап:** CP-03 — детерминированный Scene Compiler и dry-run, только после подтверждённого push CP-02.
+
+
 ## 10. Текущий рабочий статус
 
 | Контрольная точка | Статус |
@@ -334,14 +371,14 @@ tests/fixtures/visual_story_contract_v2/
 | Исходный Professional Renderer V2 baseline `414d08c` | Подтверждён локально и на GitHub |
 | CP-00: мастер-документ | **Завершён**; commit `12fffcf4de4c4978ebfe66e7a549ab521fcf8105`, push подтверждён |
 | CP-01: строгие authoring-модели и fixtures | **Завершён**; commit `8884c9509a1310ae687e4f9d8e87d41394de3df9`, push подтверждён |
-| CP-02: capability registry | Не начат |
+| CP-02: capability registry | **Локальная приёмка завершена; commit/push ожидаются** |
 | CP-03: compiler dry-run | Не начат |
 | CP-04: preview | Не начат |
 | CP-05: Global/Scene Directors | Не начат |
 | CP-06: V2 renderer adapter | Не начат |
 | CP-07: E2E приёмка | Не начат |
 
-**Следующее разрешённое действие:** начать CP-02 — инвентаризацию реальных renderer capabilities. Новый authoring contract по-прежнему не подключается к production path до отдельных CP-05/CP-06 gates.
+**Следующее разрешённое действие:** после commit/push CP-02 и проверки совпадения локального и удалённого HEAD начать CP-03 — детерминированный Scene Compiler и dry-run. Новый authoring contract по-прежнему не подключается к production path до отдельных CP-05/CP-06 gates.
 
 ## Appendix A. Ссылки на ключевые материалы
 
