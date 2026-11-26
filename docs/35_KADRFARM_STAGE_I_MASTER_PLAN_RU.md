@@ -1,8 +1,8 @@
 # KadrFarm — главный план Stage I: Visual Story 2.0
 
-- **Версия документа:** 1.8
+- **Версия документа:** 1.9
 - **Дата создания:** 24.11.2026
-- **Дата обновления:** 25.11.2026
+- **Дата обновления:** 26.11.2026
 - **Рабочая ветка:** `feature/autonomous-video-engine-2`
 - **Исходная контрольная точка:** `414d08c9a4e8ef7748488e356d266ac62083be5a` (`Harden AutoFit dynamic state integrity`)
 - **Статус:** активный навигационный документ Stage I
@@ -27,6 +27,8 @@
 7. следующий разрешённый шаг.
 
 Если новый чат или сессия начинается без полного контекста, первым делом читается этот документ и проверяется текущий Git checkpoint. Нельзя восстанавливать план по памяти или начинать с предположений.
+
+Целевой продуктовый ориентир KadrFarm как универсальной видеостудии описан в `docs/41_KADRFARM_UNIFIED_VIDEO_ENGINE_ARCHITECTURE_RU.md`. Этот документ определяет продуктовую цель и целевой сквозной процесс; настоящий master plan продолжает управлять конкретными контрольными точками Stage I. Продуктовая цель не разрешает обходить CP-05/CP-06/CP-07 или переключать production раньше их отдельной приёмки.
 
 ## 2. Текущее исходное состояние
 
@@ -343,6 +345,23 @@ tests/fixtures/visual_story_contract_v2/
 
 **Критерий выхода:** тестовые ответы проходят все контракты, реальные ответы MWS проходят без ручного редактирования схемы, сбой одной сцены не повреждает проверенный префикс, run можно безопасно возобновить.
 
+
+
+### CP-05 — аудит локального candidate v1.4 (26.11.2026; не принят)
+
+- **Статус:** в локальном аудиторском архиве обнаружены четыре candidate-файла v1.4; на исходном GitHub HEAD `835b7400076cd734e89898725fe09459e4c19e22` этих файлов нет. Реальная Global Director задача на MWS Primary не прошла; CP-05 остаётся candidate.
+- **Файлы и SHA-256:**
+  - `src/kadr_farm/visual_story_director_prompts_v2.py`: `1175c556a03f7b2e7bf0c58c019f0f437de4808435ec8632195373c1e1848651`.
+  - `src/kadr_farm/visual_story_directors_v2.py`: `6d830228ea2aa96953788d6bc3a190574c4d9b9cb8ab2c20d60745d0cbe19d28`.
+  - `tests/test_visual_story_directors_v2.py`: `b8304c8a2905efa79feccc69e33b6035da5d7024a3932c2c86199155fe129f2d`.
+  - `docs/40_VISUAL_STORY_DIRECTORS_CP05_CANDIDATE_RU.md`: `4165fc2c8c97653d3d6c4b6f935d129b7d92427e3a5a31ac71f3808304f54d55`.
+- **CP-05 targeted tests:** `19 passed`; этот результат воспроизведён при аудите переданного ZIP.
+- **Полный suite:** в локальной Windows-проверке candidate v1.4 ранее сообщалось `582 passed`. Повторный запуск полного набора в среде распакованного архива не является сопоставимым: ZIP не содержит `data/kokoro_stress_config.json` и `data/kokoro_stress_audio_test_script.json`, а Linux-среда аудита не содержит установленный Chromium executable Playwright. Поэтому архивный full-suite run завершился `572 passed, 3 skipped, 3 failed, 4 errors`; эти ошибки среды/неполноты архива не следует приписывать CP-05. Для текущей приёмки нужен повторный полный прогон на целевом Windows checkout.
+- **Фактический MWS Global probe:** один запрос; первый SSE event за 0,78 s; завершение за 70,27 s; `completion_tokens=8500`, `finish_reason=length`; JSON невалиден. Из 13 424 символов output 12 271 — whitespace. GlobalPlan не получен.
+- **Причина аномальной генерации не установлена.** Штатный candidate использует `max_tokens`, не передаёт `reasoning_effort` и не включает streaming; диагностический запрос использовал `max_completion_tokens`, `reasoning_effort=none` и streaming. Это не парное сравнение, поэтому эффект отдельных параметров не изолирован.
+- **Документированное MWS API:** Chat Completions документирует `max_completion_tokens`, `reasoning_effort`, `stream` и `stream_options.include_usage`; reasoning supported values зависят от модели. Для каталожной `gemma-4-31b-it` опубликованы `none` и `medium`, но соответствие кастомного alias `video-farm-gemma-4-31b-test` базовой модели отдельно не подтверждено. Внешние ссылки: [Chat Completions](https://mws.ru/docs/cloud-platform/gpt/general/inference-text.html), [Reasoning](https://mws.ru/docs/cloud-platform/gpt/general/reasoning.html).
+- **Следующий шаг:** source-level corrective candidate и mock tests для параметров запроса, fingerprints и journal; затем отдельный контролируемый MWS experiment. Не увеличивать лимит и не подключать CP-05 к production до успешной Global/Scene acceptance.
+
 ### CP-06 — Интеграция с Professional Renderer V2 через адаптер
 
 **Задача:** адаптировать утверждённый ExecutionPlan к существующему renderer, не заменяя его.
@@ -450,14 +469,15 @@ tests/fixtures/visual_story_contract_v2/
 | CP-02: capability registry | **Завершён**; commit `0d1930dcd3d82b8767e55d94e09536ec90127eae`, push подтверждён |
 | CP-03: compiler dry-run | **Завершён**; commit `37feccdd6353a80b64b28fcfc9975abace94cd42`, push подтверждён |
 | CP-04: preview | **Завершён**; commit `bf7a9ffae75c638a5d38b72294e8fca95ddf14b2`, push подтверждён |
-| CP-05: Global/Scene Directors | Не начат |
+| CP-05: Global/Scene Directors | **Локальный candidate v1.4; MWS acceptance не пройдена; remote-кода пока нет** |
 | CP-06: V2 renderer adapter | Не начат |
 | CP-07: E2E приёмка | Не начат |
 
-**Следующее разрешённое действие:** начать CP-05 — Global/Scene Directors. CP-04 завершена и опубликована отдельным commit `bf7a9ffae75c638a5d38b72294e8fca95ddf14b2`; локальная и удалённая ветки совпадают. Authoring → runtime adapter остаётся задачей CP-06; production path не переключается до прохождения соответствующего adapter gate.
+**Следующее разрешённое действие:** узкая corrective-итерация локального CP-05 candidate v1.4: привести параметры Chat Completions к документированному MWS API, сделать reasoning configuration явной и включить её в request fingerprint/journal, добавить mock-тесты фактического payload. После review выполнить один контролируемый MWS вызов; не увеличивать лимит токенов и не повторять тот же полный запрос вслепую. Authoring → runtime adapter остаётся задачей CP-06; production path не переключается до CP-07 и отдельного решения.
 
 ## Appendix A. Ссылки на ключевые материалы
 
+- `docs/41_KADRFARM_UNIFIED_VIDEO_ENGINE_ARCHITECTURE_RU.md` — целевая продуктовая архитектура KadrFarm как универсальной видеостудии.
 - `docs/35_KADRFARM_STAGE_I_MASTER_PLAN_RU.md` — этот мастер-план; главный приоритет по направлению и checkpoint status.
 - `docs/36_VISUAL_STORY_2_CONTRACT_FREEZE_RU.md` — frozen authoring contract 2.0 и точные границы моделей.
 - `docs/34_VISUAL_STORY_CONTRACT_V2_RU.md` — исходная архитектурная спецификация/draft.
